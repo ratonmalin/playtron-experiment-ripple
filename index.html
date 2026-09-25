@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ripple — interactive audiovisual instrument for Playtron.">
+<title>Ripple — Playtron Experiment</title>
+<link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+<main class="app">
+<canvas id="visual-field" class="visual-field" aria-hidden="true"></canvas>
+<div id="idle-message" class="idle-message" aria-hidden="true">RIPPLE</div>
+<header class="header">
+<div class="header-info">
+<h1>Ripple</h1>
+<p>Playtron experiment · Camille Grigaut</p>
+</div>
+<div class="header-actions">
+<button id="scale-button" class="scale-button" type="button">GAMME · MAJEURE</button>
+<button id="fullscreen-button" class="fullscreen-button" type="button">FULL SCREEN</button>
+</div>
+</header>
+<section class="instrument" aria-label="Musical keyboard">
+<div id="keyboard" class="keyboard" aria-label="Keyboard"></div>
+</section>
+</main>
+<script>
+const VERSION = Date.now();
+import("./js/main.js?v=" + VERSION)
+.then(() => console.log("[BOOT] Ripple ready.", VERSION))
+.catch(error => console.error("[BOOT ERROR]", error));
+</script>
+</body>
+</html>
