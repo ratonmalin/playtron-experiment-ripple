@@ -2,28 +2,28 @@ export const SCALES = [
     {
         id: "major",
         label: "MAJEURE",
-        // Ionian palette, extended with the octave so 16 inputs
-        // can remain distinct without leaving the harmonic family.
-        intervals: [0, 2, 4, 5, 7, 9, 11, 12]
+        // Seven distinct degrees. The octave is introduced by scaleNote(),
+        // not stored as a duplicate degree.
+        intervals: [0, 2, 4, 5, 7, 9, 11]
     },
     {
         id: "minor",
         label: "MINEURE",
-        // Natural minor palette.
-        intervals: [0, 2, 3, 5, 7, 8, 10, 12]
+        // Natural minor, seven distinct degrees.
+        intervals: [0, 2, 3, 5, 7, 8, 10]
     },
     {
         id: "suspended",
         label: "SUSPENDUE",
-        // Suspended / open palette: no third, with a strong 4th/5th character.
-        intervals: [0, 2, 5, 7, 9, 10, 12, 14]
+        // Open/suspended palette with seven distinct degrees.
+        intervals: [0, 2, 5, 7, 9, 10, 11]
     }
 ];
 
 const PLAYTRON_ROOT_NOTE = 50;
 const KEYBOARD_ROOT_NOTE = 50;
 const PLAYTRON_INPUT_COUNT = 16;
-const PLAYTRON_MAX_SCALE_STEP = PLAYTRON_INPUT_COUNT - 1;
+const KEYBOARD_INPUT_COUNT = 17;
 
 export class ScaleManager {
     constructor() {
@@ -137,10 +137,7 @@ export class ScaleManager {
             }
         }
 
-        const index = Math.max(
-            0,
-            this.playtronRawNotes.indexOf(note)
-        );
+        const index = Math.max(0, this.playtronRawNotes.indexOf(note));
 
         return this.scaleNote(
             PLAYTRON_ROOT_NOTE,
@@ -152,7 +149,7 @@ export class ScaleManager {
         const keyboardIndex = Math.max(
             0,
             Math.min(
-                PLAYTRON_MAX_SCALE_STEP,
+                KEYBOARD_INPUT_COUNT - 1,
                 Math.round(note - 60)
             )
         );
