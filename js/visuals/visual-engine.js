@@ -421,6 +421,62 @@ export class VisualEngine {
         }
     }
 
+    drawSun(w, h) {
+        if (this.sunReveal < 0.001) return;
+
+        const c = this.ctx;
+        const horizon = h * 0.78;
+        const radius = Math.min(w, h) * 0.045;
+        const x = w * 0.78;
+        const y = horizon - Math.min(h * 0.34, 260);
+
+        c.save();
+        c.globalAlpha = this.sunReveal;
+
+        // Very restrained glow: the sun should emerge from the empty system,
+        // not turn the garden into a conventional illustration.
+        const glow = c.createRadialGradient(
+            x, y, radius * 0.2,
+            x, y, radius * 4.5
+        );
+        glow.addColorStop(0, "rgba(255, 226, 150, 0.16)");
+        glow.addColorStop(0.45, "rgba(255, 214, 130, 0.055)");
+        glow.addColorStop(1, "rgba(255, 214, 130, 0)");
+
+        c.fillStyle = glow;
+        c.beginPath();
+        c.arc(x, y, radius * 4.5, 0, TAU);
+        c.fill();
+
+        c.strokeStyle = "rgba(255, 224, 156, 0.72)";
+        c.lineWidth = 1;
+        c.beginPath();
+        c.arc(x, y, radius, 0, TAU);
+        c.stroke();
+
+        c.strokeStyle = "rgba(255, 224, 156, 0.30)";
+        c.lineWidth = 0.7;
+
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * TAU;
+            const inner = radius * 1.45;
+            const outer = radius * 1.9;
+
+            c.beginPath();
+            c.moveTo(
+                x + Math.cos(angle) * inner,
+                y + Math.sin(angle) * inner
+            );
+            c.lineTo(
+                x + Math.cos(angle) * outer,
+                y + Math.sin(angle) * outer
+            );
+            c.stroke();
+        }
+
+        c.restore();
+    }
+
     drawGround(w, h) {
         const c = this.ctx;
         const y = h * 0.78;
