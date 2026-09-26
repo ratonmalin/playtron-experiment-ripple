@@ -255,19 +255,10 @@ export class VisualEngine {
     cloudYForX(x) {
         const w = innerWidth;
         const h = innerHeight;
+        const normalized = clamp(x / Math.max(1, w), 0, 1);
 
-        const nearest = [
-            { x: w * 0.18, width: w * 0.22, y: h * 0.16 },
-            { x: w * 0.50, width: w * 0.28, y: h * 0.10 },
-            { x: w * 0.80, width: w * 0.20, y: h * 0.19 }
-        ].reduce((best, cloud) => {
-            const distance = Math.abs(x - cloud.x);
-            return distance < best.distance
-                ? { cloud, distance }
-                : best;
-        }, { cloud: null, distance: Infinity }).cloud;
-
-        return nearest.y + 8;
+        // A gentle variation keeps the clouds from forming a rigid row.
+        return h * (0.13 + 0.055 * Math.sin(normalized * Math.PI * 2.2));
     }
 
     updateDrops(dt) {
@@ -299,18 +290,26 @@ export class VisualEngine {
                     flower.lastFed = performance.now();
                     flower.feedCount++;
 
-                    if (flower.growth < 0.92 && flower.targetGrowth < 0.995) {
+                    if (!flower.overwatered && flower.targetGrowth < 0.995) {
                         flower.targetGrowth = Math.min(
                             1,
                             flower.targetGrowth + 0.22
                         );
-                    } else {
-                        // Once the plant is mature, watering becomes
-                        // overwatering: each new drop makes it visibly smaller.
+
+                        if (flower.targetGrowth >= 0.995) {
+                            flower.overwatered = true;
+                        }
+                    } else if (flower.overwatered) {
+                        // Once fully grown, each new drop pushes the plant
+                        // back toward the soil. It can disappear completely.
                         flower.targetGrowth = Math.max(
-                            0.05,
+                            0,
                             flower.targetGrowth - 0.24
                         );
+
+                        if (flower.targetGrowth <= 0) {
+                            flower.overwatered = false;
+                        }
                     }
                 }
 
@@ -372,57 +371,63 @@ export class VisualEngine {
         const c = this.ctx;
         c.save();
 
-        // Clouds are deliberately abstract: thin atmospheric contours rather
-        // than rounded cartoon clouds. Each is a quiet source for the rain.
-        c.lineWidth = 0.7;
-        c.lineCap = "round";
-        c.lineJoin = "round";
-        c.strokeStyle = "rgba(210, 225, 220, 0.13)";
+        // Childlike clouds, but kept in the same restrained line-art language
+        // as the flowers. Each active note gets its own little cloud.
+        for (const flower of this.garden) {
+            const cloudY = this.cloudYForX(flower.x);
+            const width = Math.min(74, Math.max(52, innerWidth * 0.055));
+            const height = 25;
 
-        const groups = [
-            { x: w * 0.18, y: h * 0.15, width: w * 0.18 },
-            { x: w * 0.50, y: h * 0.10, width: w * 0.22 },
-            { x: w * 0.82, y: h * 0.17, width: w * 0.17 }
-        ];
+            c.strokeStyle = "rgba(210, 225, 220, 0.22)";
+            c.lineWidth = 1.05;
+            c.lineCap = "round";
+            c.lineJoin = "round";
 
-        for (const cloud of groups) {
-            const half = cloud.width * 0.5;
-
-            // Main suspended contour.
             c.beginPath();
-            c.moveTo(cloud.x - half, cloud.y + 3);
+            c.moveTo(flower.x - width * 0.50, cloudY + 4);
             c.bezierCurveTo(
-                cloud.x - half * 0.72, cloud.y - 2,
-                cloud.x - half * 0.48, cloud.y + 2,
-                cloud.x - half * 0.25, cloud.y - 3
+                flower.x - width * 0.42, cloudY - 3,
+                flower.x - width * 0.28, cloudY - 4,
+                flower.x - width * 0.18, cloudY - 1
             );
             c.bezierCurveTo(
-                cloud.x - half * 0.08, cloud.y - 7,
-                cloud.x + half * 0.10, cloud.y - 7,
-                cloud.x + half * 0.22, cloud.y - 2
+                flower.x - width * 0.14, cloudY - 13,
+                flower.x + width * 0.03, cloudY - 16,
+                flower.x + width * 0.12, cloudY - 6
             );
             c.bezierCurveTo(
-                cloud.x + half * 0.40, cloud.y + 3,
-                cloud.x + half * 0.67, cloud.y - 1,
-                cloud.x + half, cloud.y + 3
+                flower.x + width * 0.22, cloudY - 13,
+                flower.x + width * 0.39, cloudY - 8,
+                flower.x + width * 0.39, cloudY
+            );
+            c.bezierCurveTo(
+                flower.x + width * 0.51, cloudY - 1,
+                flower.x + width * 0.53, cloudY + 3,
+                flower.x + width * 0.50, cloudY + 4
+            );
+            c.bezierCurveTo(
+                flower.x + width * 0.30, cloudY + 9,
+                flower.x - width * 0.28, cloudY + 9,
+                flower.x - width * 0.50, cloudY + 4
             );
             c.stroke();
 
-            // A second, offset contour gives the impression of suspended
-            // vapor without creating a literal fluffy cloud.
-            c.globalAlpha = 0.42;
-            c.beginPath();
-            c.moveTo(cloud.x - half * 0.72, cloud.y + 9);
-            c.bezierCurveTo(
-                cloud.x - half * 0.35, cloud.y + 12,
-                cloud.x + half * 0.30, cloud.y + 11,
-                cloud.x + half * 0.72, cloud.y + 8
-            );
-            c.stroke();
-            c.globalAlpha = 1;
+            const noteName = this.noteName(flower.note);
+            c.font = "10px system-ui, sans-serif";
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+            c.fillStyle = "rgba(225, 235, 230, 0.58)";
+            c.fillText(noteName, flower.x, cloudY + 1);
         }
 
         c.restore();
+    }
+
+    noteName(note) {
+        const names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+        const midi = Math.round(note);
+        const octave = Math.floor(midi / 12) - 1;
+        return names[((midi % 12) + 12) % 12] + octave;
     }
 
     drawGround(w, h) {
@@ -431,7 +436,7 @@ export class VisualEngine {
 
         c.save();
         c.strokeStyle = "rgba(180, 205, 195, 0.18)";
-        c.lineWidth = 0.8;
+        c.lineWidth = 1.05;
         c.beginPath();
 
         for (let x = 0; x <= w; x += 12) {
