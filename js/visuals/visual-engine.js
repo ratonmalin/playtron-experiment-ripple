@@ -97,7 +97,7 @@ export class VisualEngine {
     }
 
     colorForNote(note) {
-        const key = Math.round(note);
+        const key = this.scaleId + ":" + Math.round(note);
         if (!this.noteColors.has(key)) {
             const palette = this.palette();
             this.noteColors.set(key, hexToRgb(palette[Math.abs(key) % palette.length]));
@@ -128,9 +128,13 @@ export class VisualEngine {
 
         // A note always has its own place in the garden. Repeated notes feed
         // the same plant instead of creating an unreadable pile of flowers.
-        let flower = this.garden.find(
-            item => item.note === note && item.state !== "returning"
-        );
+        let flower = this.garden.find(item => item.note === note);
+
+        if (flower && flower.state === "returning") {
+            flower.state = "growing";
+            flower.targetGrowth = flower.growth;
+            flower.returnStarted = null;
+        }
 
         if (!flower) {
             const w = innerWidth;
@@ -148,7 +152,7 @@ export class VisualEngine {
                 color,
                 restingColor: color,
                 growth: 0,
-                targetGrowth: 1,
+                targetGrowth: 0,
                 age: 0,
                 lastFed: performance.now(),
                 state: "growing",
@@ -158,16 +162,17 @@ export class VisualEngine {
             this.garden.push(flower);
         } else {
             flower.state = "growing";
-            flower.targetGrowth = Math.min(1, flower.targetGrowth + 0.18);
-            flower.lastFed = performance.now();
-            flower.feedCount++;
+            flower.returnStarted = null;
         }
 
         const w = innerWidth;
         const targetX = flower.x;
+        const startY = this.cloudYForX(targetX);
+
         this.drops.push({
             x: targetX,
-            y: -18,
+            y: startY,
+            startY,
             targetY: flower.groundY,
             speed: 430 + velocity * 180,
             size: 3.2 + velocity * 1.8,
@@ -218,13 +223,32 @@ export class VisualEngine {
         requestAnimationFrame(this.frame);
     }
 
+    cloudYForX(x) {
+        const w = innerWidth;
+        const h = innerHeight;
+
+        const nearest = [
+            { x: w * 0.18, width: w * 0.22, y: h * 0.16 },
+            { x: w * 0.50, width: w * 0.28, y: h * 0.10 },
+            { x: w * 0.80, width: w * 0.20, y: h * 0.19 }
+        ].reduce((best, cloud) => {
+            const distance = Math.abs(x - cloud.x);
+            return distance < best.distance
+                ? { cloud, distance }
+                : best;
+        }, { cloud: null, distance: Infinity }).cloud;
+
+        return nearest.y + 8;
+    }
+
     updateDrops(dt) {
         for (let i = this.drops.length - 1; i >= 0; i--) {
             const drop = this.drops[i];
 
             drop.y += drop.speed * dt;
             drop.progress = clamp(
-                (drop.y + 18) / Math.max(1, drop.targetY + 18),
+                (drop.y - drop.startY) /
+                Math.max(1, drop.targetY - drop.startY),
                 0,
                 1
             );
@@ -243,11 +267,20 @@ export class VisualEngine {
                 );
 
                 if (flower) {
-                    flower.targetGrowth = Math.min(
-                        1,
-                        flower.targetGrowth + 0.13
-                    );
                     flower.lastFed = performance.now();
+                    flower.feedCount++;
+
+                    if (flower.targetGrowth < 0.995) {
+                        flower.targetGrowth = Math.min(
+                            1,
+                            flower.targetGrowth + 0.13
+                        );
+                    } else {
+                        flower.targetGrowth = Math.max(
+                            0.08,
+                            flower.targetGrowth - 0.085
+                        );
+                    }
                 }
 
                 this.drops.splice(i, 1);
@@ -262,15 +295,12 @@ export class VisualEngine {
             const flower = this.garden[i];
             flower.age += dt;
 
-            const growRate =
-                flower.state === "growing"
-                    ? this.scaleId === "suspended" ? 0.48 : 0.38
-                    : 0.22;
+            const responseRate = flower.state === "returning" ? 0.22 : 0.55;
 
             flower.growth = lerp(
                 flower.growth,
                 flower.targetGrowth,
-                1 - Math.exp(-growRate * dt)
+                1 - Math.exp(-responseRate * dt)
             );
 
             // The garden only begins returning after a genuinely quiet pause.
@@ -294,12 +324,6 @@ export class VisualEngine {
                 if (sleepProgress >= 1) {
                     this.garden.splice(i, 1);
                 }
-            } else {
-                flower.growth = clamp(
-                    flower.growth + dt * 0.012,
-                    0,
-                    1
-                );
             }
         }
     }
@@ -317,32 +341,66 @@ export class VisualEngine {
         const c = this.ctx;
         c.save();
 
-        // Extremely restrained orbital lines give the scene its
-        // mathematical / physical-system character.
-        c.globalAlpha = 0.045;
-        c.strokeStyle = "rgba(210, 230, 225, 1)";
-        c.lineWidth = 0.7;
+        // Thin cloud structures sit above the garden. They are drawn as
+        // quiet line-art forms, with each note's rain emerging from its cloud.
+        c.lineWidth = 0.75;
+        c.lineCap = "round";
+        c.lineJoin = "round";
 
-        const cx = w * 0.5;
-        const cy = h * 0.48;
-        const rx = Math.min(w, h) * 0.31;
-        const ry = Math.min(w, h) * 0.12;
+        const cloudGroups = [
+            { x: w * 0.18, y: h * 0.16, width: w * 0.22, height: 28 },
+            { x: w * 0.50, y: h * 0.10, width: w * 0.28, height: 34 },
+            { x: w * 0.80, y: h * 0.19, width: w * 0.20, height: 25 }
+        ];
 
-        c.beginPath();
-        c.ellipse(cx, cy, rx, ry, -0.12, 0, TAU);
-        c.stroke();
+        for (const cloud of cloudGroups) {
+            c.strokeStyle = "rgba(210, 225, 220, 0.12)";
+            c.beginPath();
+            c.moveTo(cloud.x - cloud.width * 0.5, cloud.y + 8);
 
-        c.beginPath();
-        c.ellipse(
-            cx,
-            cy,
-            rx * 0.64,
-            ry * 1.55,
-            0.48 + Math.sin(now * 0.00008) * 0.02,
-            0,
-            TAU
-        );
-        c.stroke();
+            c.bezierCurveTo(
+                cloud.x - cloud.width * 0.36,
+                cloud.y - 2,
+                cloud.x - cloud.width * 0.24,
+                cloud.y + 4,
+                cloud.x - cloud.width * 0.13,
+                cloud.y - 5
+            );
+
+            c.bezierCurveTo(
+                cloud.x - cloud.width * 0.02,
+                cloud.y - 19,
+                cloud.x + cloud.width * 0.15,
+                cloud.y - 17,
+                cloud.x + cloud.width * 0.20,
+                cloud.y - 5
+            );
+
+            c.bezierCurveTo(
+                cloud.x + cloud.width * 0.31,
+                cloud.y - 12,
+                cloud.x + cloud.width * 0.43,
+                cloud.y - 2,
+                cloud.x + cloud.width * 0.5,
+                cloud.y + 8
+            );
+
+            c.stroke();
+
+            c.globalAlpha = 0.5;
+            c.beginPath();
+            c.moveTo(cloud.x - cloud.width * 0.44, cloud.y + 13);
+            c.bezierCurveTo(
+                cloud.x - cloud.width * 0.12,
+                cloud.y + 17,
+                cloud.x + cloud.width * 0.12,
+                cloud.y + 14,
+                cloud.x + cloud.width * 0.44,
+                cloud.y + 13
+            );
+            c.stroke();
+            c.globalAlpha = 1;
+        }
 
         c.restore();
     }
