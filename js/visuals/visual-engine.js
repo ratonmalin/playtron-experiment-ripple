@@ -60,7 +60,8 @@ export class VisualEngine {
         this.sleepCycle = -1;
         this.sleepMessageIndex = -1;
         this.stars = [];
-        this.sleepMessageIndex = 0;
+        this.activeNotes = new Set();
+        this.chordStarTimer = 0;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -163,6 +164,13 @@ export class VisualEngine {
         this.lastActivity = performance.now();
 
         const note = Math.round(event.note);
+        const activeKey =
+            String(event.source || "unknown") +
+            ":" +
+            String(event.channel ?? 0) +
+            ":" +
+            note;
+        this.activeNotes.add(activeKey);
         const now = performance.now();
         const previous = this.lastNoteOn.get(note);
 
@@ -189,11 +197,6 @@ export class VisualEngine {
         }
 
         if (!flower) {
-            const hadOtherNotes = this.garden.some(item => item.note !== note);
-            if (hadOtherNotes) {
-                this.createChordStars();
-            }
-
             const w = innerWidth;
             const h = innerHeight;
 
@@ -243,6 +246,19 @@ export class VisualEngine {
 
     handleNoteOff(event) {
         this.lastActivity = performance.now();
+
+        const note = Math.round(event.note);
+        const activeKey =
+            String(event.source || "unknown") +
+            ":" +
+            String(event.channel ?? 0) +
+            ":" +
+            note;
+        this.activeNotes.delete(activeKey);
+
+        if (this.activeNotes.size < 2) {
+            this.chordStarTimer = 0;
+        }
     }
 
     frame(now) {
@@ -252,7 +268,8 @@ export class VisualEngine {
         const w = innerWidth;
         const h = innerHeight;
 
-        this.ctx.fillStyle = "rgba(3, 5, 5, 0.18)";
+        this.ctx.clearRect(0, 0, w, h);
+        this.ctx.fillStyle = "rgb(3, 5, 5)";
         this.ctx.fillRect(0, 0, w, h);
 
         this.updateDrops(dt);
@@ -261,6 +278,7 @@ export class VisualEngine {
 
         const idleFor = now - this.lastActivity;
         this.updateStars(dt, idleFor);
+        this.updateChordStars(dt);
         const sunTarget = idleFor > 18000 ? 1 : 0;
         this.sunReveal = lerp(this.sunReveal, sunTarget, 1 - Math.exp(-0.35 * dt));
 
@@ -396,44 +414,67 @@ export class VisualEngine {
     }
 
     updateStars(dt, idleFor) {
-        // Stars are created by chords and slowly disappear as the idle state
-        // takes over. A star is deliberately tiny and white.
-        const interactionFade = clamp(1 - Math.max(0, idleFor - 10000) / 22000, 0, 1);
+        // Stars belong to the chord state only. Once the chord ends they
+        // remain briefly, then fade away progressively toward idle.
+        const idleFade = clamp(1 - Math.max(0, idleFor - 8000) / 22000, 0, 1);
 
         for (let i = this.stars.length - 1; i >= 0; i--) {
             const star = this.stars[i];
             star.age += dt;
-            star.alpha *= Math.exp(-0.018 * dt);
 
-            if (interactionFade <= 0.001 || star.alpha <= 0.006) {
+            if (this.activeNotes.size < 2) {
+                star.alpha *= Math.exp(-0.22 * dt);
+            }
+
+            if (idleFade < 1) {
+                star.alpha *= Math.exp(-0.05 * dt);
+            }
+
+            if (star.alpha <= 0.006 || idleFade <= 0.001) {
                 this.stars.splice(i, 1);
             }
         }
     }
 
-    createChordStars() {
-        const count = 5 + Math.floor(Math.random() * 5);
+    updateChordStars(dt) {
+        if (this.activeNotes.size < 2) {
+            this.chordStarTimer = 0;
+            return;
+        }
 
-        for (let i = 0; i < count; i++) {
+        // Build the constellation slowly rather than spawning a burst.
+        this.chordStarTimer += dt;
+
+        const interval = 0.38;
+        while (this.chordStarTimer >= interval && this.stars.length < 24) {
+            this.chordStarTimer -= interval;
+
             this.stars.push({
                 x: innerWidth * (0.08 + Math.random() * 0.84),
-                y: innerHeight * (0.10 + Math.random() * 0.56),
+                y: innerHeight * (0.08 + Math.random() * 0.56),
                 age: 0,
-                alpha: 0.34 + Math.random() * 0.22,
-                size: 0.45 + Math.random() * 0.55
+                alpha: 0,
+                targetAlpha: 0.18 + Math.random() * 0.14,
+                size: 0.35 + Math.random() * 0.45
             });
         }
 
-        if (this.stars.length > 36) {
-            this.stars.splice(0, this.stars.length - 36);
+        // Newly created points fade in gently.
+        for (const star of this.stars) {
+            if (star.alpha < star.targetAlpha) {
+                star.alpha = Math.min(
+                    star.targetAlpha,
+                    star.alpha + dt * 0.12
+                );
+            }
         }
     }
 
     drawStars(now, idleFor) {
         if (!this.stars.length) return;
 
-        const idleFade = clamp(1 - Math.max(0, idleFor - 10000) / 22000, 0, 1);
-        if (idleFade <= 0) return;
+        const idleFade =
+            clamp(1 - Math.max(0, idleFor - 8000) / 22000, 0, 1);
 
         const c = this.ctx;
         c.save();
@@ -441,8 +482,8 @@ export class VisualEngine {
 
         for (const star of this.stars) {
             const twinkle =
-                0.78 +
-                Math.sin(now * 0.0012 + star.x * 0.013) * 0.22;
+                0.9 +
+                Math.sin(now * 0.0008 + star.x * 0.013) * 0.1;
 
             c.globalAlpha = star.alpha * twinkle * idleFade;
             c.beginPath();
@@ -452,6 +493,7 @@ export class VisualEngine {
 
         c.restore();
     }
+
 
     drawSun(w, h) {
         if (this.sunReveal < 0.001) return;
