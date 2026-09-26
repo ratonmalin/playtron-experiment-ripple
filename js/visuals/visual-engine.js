@@ -125,35 +125,35 @@ export class VisualEngine {
         const key = Math.round(note);
 
         if (!this.noteColumns.has(key)) {
-            // ScaleManager maps Playtron inputs onto two octaves of scale
-            // degrees. Use that musical degree as the physical garden slot,
-            // so two different notes can never accidentally share a column.
+            // Notes reaching the visual engine are already quantized to the
+            // current scale. Map the exact scale degree to a unique garden
+            // slot instead of nearest-note quantization. This prevents
+            // adjacent keyboard keys such as G/H/J from collapsing onto one
+            // another visually.
             const intervalsByScale = {
                 major: [0, 2, 4, 5, 7, 9, 11],
                 minor: [0, 2, 3, 5, 7, 8, 10],
                 suspended: [0, 2, 5, 7, 9, 10, 11]
             };
 
-            const intervals = intervalsByScale[this.scaleId] || intervalsByScale.major;
+            const intervals =
+                intervalsByScale[this.scaleId] ||
+                intervalsByScale.major;
+
             const relative = key - 50;
-            let bestIndex = 0;
-            let bestDistance = Infinity;
+            const octave = Math.floor(relative / 12);
+            const degree = intervals.indexOf(
+                ((relative % 12) + 12) % 12
+            );
 
-            for (let octave = 0; octave < 2; octave++) {
-                for (let degree = 0; degree < intervals.length; degree++) {
-                    const candidate = octave * 12 + intervals[degree];
-                    const distance = Math.abs(relative - candidate);
+            const exactDegree = degree >= 0 ? degree : 0;
+            const slot = clamp(
+                octave * intervals.length + exactDegree,
+                0,
+                16
+            );
 
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        bestIndex = octave * intervals.length + degree;
-                    }
-                }
-            }
-
-            bestIndex = clamp(bestIndex, 0, 15);
-            const normalized = bestIndex / 15;
-            this.noteColumns.set(key, normalized);
+            this.noteColumns.set(key, slot / 16);
         }
 
         return this.noteColumns.get(key);
