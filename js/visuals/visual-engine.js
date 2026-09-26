@@ -55,6 +55,9 @@ export class VisualEngine {
         this.noteColors = new Map();
         this.noteColumns = new Map();
         this.nextFlowerId = 1;
+        this.activeNotes = new Set();
+        this.chordPulse = null;
+        this.chordArmed = true;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -152,6 +155,14 @@ export class VisualEngine {
 
         const note = Math.round(event.note);
         const velocity = clamp(Number(event.velocity) || 0.7, 0.1, 1);
+
+        const previousActiveCount = this.activeNotes.size;
+        this.activeNotes.add(note);
+
+        if (previousActiveCount < 3 && this.activeNotes.size >= 3 && this.chordArmed) {
+            this.triggerChord();
+            this.chordArmed = false;
+        }
         const color = this.colorForNote(note);
         const column = this.columnForNote(note);
 
@@ -218,6 +229,31 @@ export class VisualEngine {
 
     handleNoteOff(event) {
         this.lastActivity = performance.now();
+        this.activeNotes.delete(Math.round(event.note));
+
+        if (this.activeNotes.size < 3) {
+            this.chordArmed = true;
+        }
+    }
+
+    triggerChord() {
+        const notes = [...this.activeNotes];
+        const points = notes
+            .map(note => this.garden.find(flower => flower.note === note))
+            .filter(Boolean)
+            .map(flower => ({
+                x: flower.x,
+                y: this.cloudYForX(flower.x),
+                color: flower.restingColor
+            }));
+
+        if (points.length < 3) return;
+
+        this.chordPulse = {
+            age: 0,
+            life: 2.2,
+            points
+        };
     }
 
     frame(now) {
@@ -234,10 +270,18 @@ export class VisualEngine {
         this.updateGarden(dt, now);
         this.updateImpacts(dt);
 
+        if (this.chordPulse) {
+            this.chordPulse.age += dt;
+            if (this.chordPulse.age >= this.chordPulse.life) {
+                this.chordPulse = null;
+            }
+        }
+
         this.drawAtmosphere(now, w, h);
         this.drawGround(w, h);
         this.drawDrops();
         this.drawGarden(now);
+        this.drawChordEffect();
 
         const idleFor = now - this.lastActivity;
         const sleeping = idleFor > 10000;
@@ -508,6 +552,81 @@ export class VisualEngine {
             c.stroke();
             c.restore();
         }
+    }
+
+    drawChordEffect() {
+        const pulse = this.chordPulse;
+        if (!pulse || pulse.points.length < 3) return;
+
+        const c = this.ctx;
+        const t = clamp(pulse.age / pulse.life, 0, 1);
+        const attack = easeOutCubic(Math.min(1, pulse.age / 0.35));
+        const fade = 1 - easeInOutSine(Math.max(0, (pulse.age - 0.75) / 1.45));
+
+        const cx = pulse.points.reduce((sum, p) => sum + p.x, 0) / pulse.points.length;
+        const cy = pulse.points.reduce((sum, p) => sum + p.y, 0) / pulse.points.length;
+
+        c.save();
+        c.lineCap = "round";
+        c.lineJoin = "round";
+
+        // The chord briefly turns the separate clouds into one precise
+        // geometric system.
+        c.lineWidth = 1.1;
+        c.strokeStyle = "rgba(225, 240, 235, " + (0.38 * fade) + ")";
+        c.beginPath();
+
+        pulse.points.forEach((p, i) => {
+            if (i === 0) c.moveTo(p.x, p.y);
+            else c.lineTo(p.x, p.y);
+        });
+        c.closePath();
+        c.stroke();
+
+        // A second, quieter inner triangle makes the event feel like a
+        // resonance rather than a generic flash.
+        c.lineWidth = 0.65;
+        c.strokeStyle = "rgba(225, 240, 235, " + (0.24 * fade) + ")";
+        c.beginPath();
+        pulse.points.forEach((p, i) => {
+            const x = lerp(cx, p.x, 0.72);
+            const y = lerp(cy, p.y, 0.72);
+            if (i === 0) c.moveTo(x, y);
+            else c.lineTo(x, y);
+        });
+        c.closePath();
+        c.stroke();
+
+        for (let ring = 0; ring < 3; ring++) {
+            const radius = 8 + attack * (42 + ring * 20);
+            const ringAlpha = (1 - ring * 0.22) * fade * 0.28;
+
+            c.strokeStyle = "rgba(225, 240, 235, " + ringAlpha + ")";
+            c.lineWidth = ring === 0 ? 1.1 : 0.65;
+            c.beginPath();
+            c.ellipse(
+                cx,
+                cy,
+                radius,
+                radius * 0.34,
+                0,
+                0,
+                TAU
+            );
+            c.stroke();
+        }
+
+        // Small points of light travel outward from the resonance center.
+        for (const point of pulse.points) {
+            const x = lerp(cx, point.x, attack);
+            const y = lerp(cy, point.y, attack);
+            c.fillStyle = rgba(point.color, 0.72 * fade);
+            c.beginPath();
+            c.arc(x, y, 1.8 + attack * 1.8, 0, TAU);
+            c.fill();
+        }
+
+        c.restore();
     }
 
     drawGarden(now) {
