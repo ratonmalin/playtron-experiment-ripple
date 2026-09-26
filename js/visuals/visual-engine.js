@@ -55,13 +55,9 @@ export class VisualEngine {
         this.noteColors = new Map();
         this.noteColumns = new Map();
         this.nextFlowerId = 1;
-        this.activeNotes = new Set();
-        this.trees = [
-            { id: "left", side: -1, xRatio: 0.075, groundYRatio: 0.78, heightRatio: 0.68, widthRatio: 0.16, growth: 0, targetGrowth: 0 },
-            { id: "right", side: 1, xRatio: 0.925, groundYRatio: 0.78, heightRatio: 0.68, widthRatio: 0.16, growth: 0, targetGrowth: 0 }
-        ];
-        this.chordLatched = false;
         this.sunReveal = 0;
+        this.sleepCycle = -1;
+        this.sleepMessageIndex = 0;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -165,15 +161,6 @@ export class VisualEngine {
 
         const note = Math.round(event.note);
         const velocity = clamp(Number(event.velocity) || 0.7, 0.1, 1);
-        this.activeNotes.add(note);
-
-        // A chord is three or more notes held together. Trigger only once
-        // per chord, so a sustained chord grows one small grove rather than
-        // spawning a tree on every incoming note.
-        if (this.activeNotes.size >= 3 && !this.chordLatched) {
-            this.growChordTrees([...this.activeNotes]);
-            this.chordLatched = true;
-        }
         const color = this.colorForNote(note);
         const column = this.columnForNote(note);
 
@@ -237,17 +224,6 @@ export class VisualEngine {
 
     handleNoteOff(event) {
         this.lastActivity = performance.now();
-        this.activeNotes.delete(Math.round(event.note));
-        if (this.activeNotes.size < 3) {
-            this.chordLatched = false;
-        }
-    }
-
-    growChordTrees(notes) {
-        const amount = clamp(0.16 + notes.length * 0.035, 0.16, 0.28);
-        for (const tree of this.trees) {
-            tree.targetGrowth = Math.min(1, tree.targetGrowth + amount);
-        }
     }
 
     frame(now) {
@@ -262,7 +238,6 @@ export class VisualEngine {
 
         this.updateDrops(dt);
         this.updateGarden(dt, now);
-        this.updateTrees(dt);
         this.updateImpacts(dt);
 
         const idleFor = now - this.lastActivity;
@@ -274,13 +249,33 @@ export class VisualEngine {
         this.drawDrops();
         this.drawGarden(now);
 
-        const sleeping = idleFor > 10000;
+        const sleeping = idleFor > 30000;
 
-        if (this.idle) {
-            this.idle.classList.toggle(
-                "visible",
-                this.garden.length === 0 && sleeping
-            );
+        if (!sleeping) {
+            this.sleepCycle = -1;
+
+            if (this.idle) {
+                this.idle.classList.remove("visible");
+            }
+        } else if (this.sleepCycle === -1) {
+            this.sleepCycle = 0;
+
+            const messages = [
+                "RÉVEILLEZ-MOI",
+                "JE SUIS LÀ",
+                "HEY"
+            ];
+
+            this.sleepMessageIndex =
+                (this.sleepMessageIndex + 1) % messages.length;
+
+            if (this.idle) {
+                this.idle.textContent =
+                    messages[this.sleepMessageIndex];
+                this.idle.classList.add("visible");
+            }
+        } else if (this.idle) {
+            this.idle.classList.add("visible");
         }
 
         requestAnimationFrame(this.frame);
@@ -372,16 +367,6 @@ export class VisualEngine {
         }
     }
 
-    updateTrees(dt) {
-        for (const tree of this.trees) {
-            tree.growth = lerp(
-                tree.growth,
-                tree.targetGrowth,
-                1 - Math.exp(-0.22 * dt)
-            );
-        }
-    }
-
     updateImpacts(dt) {
         for (let i = this.impacts.length - 1; i >= 0; i--) {
             this.impacts[i].age += dt;
@@ -399,45 +384,36 @@ export class VisualEngine {
         const radius = Math.min(w, h) * 0.225;
         const x = w * 0.5;
         const rise = easeInOutSine(this.sunReveal);
+
+        // Clip at the horizon: the sun can emerge through the line,
+        // but can never be rendered below the ground.
         const y = lerp(horizon + radius, h * 0.42, rise);
 
         c.save();
+        c.beginPath();
+        c.rect(0, 0, w, horizon);
+        c.clip();
         c.globalAlpha = this.sunReveal;
 
-        const halo = c.createRadialGradient(x, y, radius * 0.35, x, y, radius * 2.35);
-        halo.addColorStop(0, "rgba(255, 238, 164, 0.28)");
-        halo.addColorStop(0.25, "rgba(255, 190, 96, 0.20)");
-        halo.addColorStop(0.58, "rgba(247, 126, 83, 0.08)");
-        halo.addColorStop(1, "rgba(247, 126, 83, 0)");
-        c.fillStyle = halo;
-        c.beginPath();
-        c.arc(x, y, radius * 2.35, 0, TAU);
-        c.fill();
-
-        const disc = c.createRadialGradient(x - radius * 0.22, y - radius * 0.25, radius * 0.08, x, y, radius);
-        disc.addColorStop(0, "rgba(255, 248, 205, 0.98)");
-        disc.addColorStop(0.42, "rgba(255, 211, 121, 0.96)");
-        disc.addColorStop(0.78, "rgba(247, 145, 82, 0.94)");
-        disc.addColorStop(1, "rgba(214, 91, 72, 0.90)");
-        c.fillStyle = disc;
+        c.fillStyle = "rgba(248, 249, 244, 0.92)";
         c.beginPath();
         c.arc(x, y, radius, 0, TAU);
         c.fill();
 
-        c.strokeStyle = "rgba(255, 248, 213, 0.72)";
-        c.lineWidth = 1.2;
-        c.beginPath();
-        c.arc(x, y, radius, 0, TAU);
-        c.stroke();
-
-        c.fillStyle = "rgba(38, 22, 20, 0.72)";
-        c.font = "300 " + Math.max(11, Math.min(20, radius * 0.105)) + "px Inter, system-ui, sans-serif";
+        c.fillStyle = "rgba(5, 5, 5, 0.78)";
+        c.font =
+            "300 " +
+            Math.max(11, Math.min(20, radius * 0.105)) +
+            "px Inter, system-ui, sans-serif";
         c.textAlign = "center";
         c.textBaseline = "middle";
 
         const lines = ["HEY,", "REVEILLEZ MOI,", "JE SUIS LA"];
         const lineHeight = radius * 0.22;
-        lines.forEach((line, i) => c.fillText(line, x, y + (i - 1) * lineHeight));
+
+        lines.forEach((line, i) => {
+            c.fillText(line, x, y + (i - 1) * lineHeight);
+        });
 
         c.restore();
     }
@@ -447,7 +423,7 @@ export class VisualEngine {
         const y = h * 0.78;
         c.save();
         c.strokeStyle = "rgba(248, 249, 244, 0.94)";
-        c.lineWidth = 7.5;
+        c.lineWidth = 4;
         c.lineCap = "butt";
         c.beginPath();
         c.moveTo(0, y);
@@ -517,81 +493,6 @@ export class VisualEngine {
         for (const flower of this.garden) {
             this.drawFlower(flower, now);
         }
-        for (const tree of this.trees) {
-            this.drawTree(tree);
-        }
-    }
-
-    drawTree(tree) {
-        const c = this.ctx;
-        const growth = clamp(tree.growth, 0, 1);
-        if (growth < 0.005) return;
-
-        const h = innerHeight * tree.heightRatio * easeInOutSine(growth);
-        const trunkW = innerHeight * tree.widthRatio * (0.72 + 0.28 * easeInOutSine(growth));
-        const y = innerHeight * tree.groundYRatio;
-        const x = innerWidth * tree.xRatio;
-        const side = tree.side;
-
-        c.save();
-        c.globalAlpha = 0.9;
-        c.strokeStyle = "rgba(211, 222, 215, 0.86)";
-        c.lineCap = "round";
-        c.lineJoin = "round";
-
-        c.lineWidth = 1.35;
-        c.beginPath();
-        c.moveTo(x - trunkW * 0.16, y);
-        c.bezierCurveTo(x - trunkW * 0.30, y - h * 0.25, x - trunkW * 0.18, y - h * 0.58, x - trunkW * 0.06, y - h);
-        c.stroke();
-        c.beginPath();
-        c.moveTo(x + trunkW * 0.16, y);
-        c.bezierCurveTo(x + trunkW * 0.30, y - h * 0.25, x + trunkW * 0.18, y - h * 0.58, x + trunkW * 0.06, y - h);
-        c.stroke();
-
-        c.lineWidth = 0.65;
-        c.strokeStyle = "rgba(194, 209, 201, 0.58)";
-        for (let i = 1; i < 10; i++) {
-            const t = i / 10;
-            const yy = y - h * t;
-            const half = trunkW * (0.13 + 0.05 * Math.sin(i * 1.7));
-            const bend = Math.sin(i * 2.15) * trunkW * 0.07;
-            c.beginPath();
-            c.moveTo(x - half + bend, yy + h * 0.035);
-            c.bezierCurveTo(x - half * 0.65, yy - h * 0.08, x + half * 0.65, yy - h * 0.12, x + half - bend, yy - h * 0.025);
-            c.stroke();
-        }
-
-        c.lineWidth = 1.0;
-        c.strokeStyle = "rgba(207, 220, 212, 0.72)";
-        const levels = [0.42, 0.57, 0.69, 0.80, 0.89];
-        for (let i = 0; i < levels.length; i++) {
-            const level = levels[i];
-            const yy = y - h * level;
-            const direction = i % 2 === 0 ? side : -side;
-            const length = trunkW * (0.95 - i * 0.08);
-
-            c.beginPath();
-            c.moveTo(x, yy);
-            c.quadraticCurveTo(x + direction * length * 0.32, yy - h * 0.035, x + direction * length, yy - h * (0.13 - i * 0.012));
-            c.stroke();
-
-            c.lineWidth = 0.55;
-            c.beginPath();
-            c.moveTo(x + direction * length * 0.58, yy - h * 0.075);
-            c.quadraticCurveTo(x + direction * length * 0.78, yy - h * 0.14, x + direction * length * 0.98, yy - h * 0.16);
-            c.stroke();
-            c.lineWidth = 1.0;
-        }
-
-        c.lineWidth = 0.85;
-        c.strokeStyle = "rgba(197, 213, 204, 0.58)";
-        c.beginPath();
-        c.moveTo(x, y - h);
-        c.bezierCurveTo(x + side * trunkW * 0.45, y - h * 0.98, x + side * trunkW * 1.25, y - h * 0.91, x + side * trunkW * 1.45, y - h * 0.78);
-        c.stroke();
-
-        c.restore();
     }
 
     drawFlower(flower, now) {
