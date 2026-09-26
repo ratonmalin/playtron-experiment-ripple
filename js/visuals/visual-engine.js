@@ -302,14 +302,14 @@ export class VisualEngine {
                     if (flower.growth < 0.92 && flower.targetGrowth < 0.995) {
                         flower.targetGrowth = Math.min(
                             1,
-                            flower.targetGrowth + 0.14
+                            flower.targetGrowth + 0.22
                         );
                     } else {
                         // Once the plant is mature, watering becomes
                         // overwatering: each new drop makes it visibly smaller.
                         flower.targetGrowth = Math.max(
                             0.05,
-                            flower.targetGrowth - 0.18
+                            flower.targetGrowth - 0.24
                         );
                     }
                 }
@@ -326,7 +326,7 @@ export class VisualEngine {
             const flower = this.garden[i];
             flower.age += dt;
 
-            const responseRate = flower.state === "returning" ? 0.22 : 0.55;
+            const responseRate = flower.state === "returning" ? 0.32 : 1.35;
 
             flower.growth = lerp(
                 flower.growth,
