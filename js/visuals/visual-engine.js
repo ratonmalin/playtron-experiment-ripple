@@ -299,15 +299,17 @@ export class VisualEngine {
                     flower.lastFed = performance.now();
                     flower.feedCount++;
 
-                    if (flower.targetGrowth < 0.995) {
+                    if (flower.growth < 0.92 && flower.targetGrowth < 0.995) {
                         flower.targetGrowth = Math.min(
                             1,
-                            flower.targetGrowth + 0.13
+                            flower.targetGrowth + 0.14
                         );
                     } else {
+                        // Once the plant is mature, watering becomes
+                        // overwatering: each new drop makes it visibly smaller.
                         flower.targetGrowth = Math.max(
-                            0.08,
-                            flower.targetGrowth - 0.085
+                            0.05,
+                            flower.targetGrowth - 0.18
                         );
                     }
                 }
@@ -370,62 +372,51 @@ export class VisualEngine {
         const c = this.ctx;
         c.save();
 
-        // Thin cloud structures sit above the garden. They are drawn as
-        // quiet line-art forms, with each note's rain emerging from its cloud.
-        c.lineWidth = 0.75;
+        // Clouds are deliberately abstract: thin atmospheric contours rather
+        // than rounded cartoon clouds. Each is a quiet source for the rain.
+        c.lineWidth = 0.7;
         c.lineCap = "round";
         c.lineJoin = "round";
+        c.strokeStyle = "rgba(210, 225, 220, 0.13)";
 
-        const cloudGroups = [
-            { x: w * 0.18, y: h * 0.16, width: w * 0.22, height: 28 },
-            { x: w * 0.50, y: h * 0.10, width: w * 0.28, height: 34 },
-            { x: w * 0.80, y: h * 0.19, width: w * 0.20, height: 25 }
+        const groups = [
+            { x: w * 0.18, y: h * 0.15, width: w * 0.18 },
+            { x: w * 0.50, y: h * 0.10, width: w * 0.22 },
+            { x: w * 0.82, y: h * 0.17, width: w * 0.17 }
         ];
 
-        for (const cloud of cloudGroups) {
-            c.strokeStyle = "rgba(210, 225, 220, 0.12)";
+        for (const cloud of groups) {
+            const half = cloud.width * 0.5;
+
+            // Main suspended contour.
             c.beginPath();
-            c.moveTo(cloud.x - cloud.width * 0.5, cloud.y + 8);
-
+            c.moveTo(cloud.x - half, cloud.y + 3);
             c.bezierCurveTo(
-                cloud.x - cloud.width * 0.36,
-                cloud.y - 2,
-                cloud.x - cloud.width * 0.24,
-                cloud.y + 4,
-                cloud.x - cloud.width * 0.13,
-                cloud.y - 5
+                cloud.x - half * 0.72, cloud.y - 2,
+                cloud.x - half * 0.48, cloud.y + 2,
+                cloud.x - half * 0.25, cloud.y - 3
             );
-
             c.bezierCurveTo(
-                cloud.x - cloud.width * 0.02,
-                cloud.y - 19,
-                cloud.x + cloud.width * 0.15,
-                cloud.y - 17,
-                cloud.x + cloud.width * 0.20,
-                cloud.y - 5
+                cloud.x - half * 0.08, cloud.y - 7,
+                cloud.x + half * 0.10, cloud.y - 7,
+                cloud.x + half * 0.22, cloud.y - 2
             );
-
             c.bezierCurveTo(
-                cloud.x + cloud.width * 0.31,
-                cloud.y - 12,
-                cloud.x + cloud.width * 0.43,
-                cloud.y - 2,
-                cloud.x + cloud.width * 0.5,
-                cloud.y + 8
+                cloud.x + half * 0.40, cloud.y + 3,
+                cloud.x + half * 0.67, cloud.y - 1,
+                cloud.x + half, cloud.y + 3
             );
-
             c.stroke();
 
-            c.globalAlpha = 0.5;
+            // A second, offset contour gives the impression of suspended
+            // vapor without creating a literal fluffy cloud.
+            c.globalAlpha = 0.42;
             c.beginPath();
-            c.moveTo(cloud.x - cloud.width * 0.44, cloud.y + 13);
+            c.moveTo(cloud.x - half * 0.72, cloud.y + 9);
             c.bezierCurveTo(
-                cloud.x - cloud.width * 0.12,
-                cloud.y + 17,
-                cloud.x + cloud.width * 0.12,
-                cloud.y + 14,
-                cloud.x + cloud.width * 0.44,
-                cloud.y + 13
+                cloud.x - half * 0.35, cloud.y + 12,
+                cloud.x + half * 0.30, cloud.y + 11,
+                cloud.x + half * 0.72, cloud.y + 8
             );
             c.stroke();
             c.globalAlpha = 1;
