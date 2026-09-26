@@ -592,99 +592,50 @@ export class Voice {
 
 
     disconnect() {
-
         if (this.releaseTimer !== null) {
-
-            clearTimeout(
-                this.releaseTimer
-            );
-
+            clearTimeout(this.releaseTimer);
             this.releaseTimer = null;
         }
 
-
-        try {
-            this.oscillatorA?.disconnect();
-        } catch {}
-
-        try {
-            this.oscillatorAGain?.disconnect();
-        } catch {}
-
-        try {
-            this.oscillatorB?.disconnect();
-        } catch {}
-
-        try {
-            this.oscillatorBGain?.disconnect();
-        } catch {}
-
-        try {
-            this.oscillatorC?.disconnect();
-        } catch {}
-
-        try {
-            this.oscillatorCGain?.disconnect();
-        } catch {}
-
-        try {
+        for (const node of [
+            this.oscillatorA,
+            this.oscillatorAGain,
+            this.oscillatorB,
+            this.oscillatorBGain,
+            this.oscillatorC,
+            this.oscillatorCGain,
+            this.oscillatorD,
+            this.oscillatorDGain,
+            this.crystalGain,
+            this.filter,
+            this.gain,
+            this.reverbSend,
+            this.panner,
+            this.lfo,
+            this.lfoGain,
+            this.filterLfo,
+            this.filterLfoGain
+        ]) {
             try {
-            this.oscillatorDGain?.disconnect();
-        } catch {}
-
-        try {
-            this.crystalGain?.disconnect();
-        } catch {}
-
-        try {
-            this.filter?.disconnect();
-        } catch {}
-
-        try {
-            this.gain?.disconnect();
-        } catch {}
-
-        try {
-            this.reverbSend?.disconnect();
-        } catch {}
-
-        try {
-            this.panner?.disconnect();
-        } catch {}
-
-        try {
-            this.lfo?.disconnect();
-        } catch {}
-
-        try {
-            this.lfoGain?.disconnect();
-        } catch {}
-
-        try {
-            this.filterLfo?.disconnect();
-        } catch {}
-
-        try {
-            this.filterLfoGain?.disconnect();
-        } catch {}
-
+                node?.disconnect();
+            } catch {}
+        }
 
         this.oscillatorA = null;
         this.oscillatorB = null;
         this.oscillatorC = null;
-
+        this.oscillatorD = null;
         this.oscillatorAGain = null;
         this.oscillatorBGain = null;
         this.oscillatorCGain = null;
-
+        this.oscillatorDGain = null;
+        this.crystalGain = null;
         this.filter = null;
         this.gain = null;
         this.reverbSend = null;
         this.panner = null;
-
         this.lfo = null;
         this.lfoGain = null;
-
         this.filterLfo = null;
         this.filterLfoGain = null;
     }
