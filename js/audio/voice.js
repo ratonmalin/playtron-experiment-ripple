@@ -16,10 +16,16 @@ export class Voice {
         this.oscillatorA = null;
         this.oscillatorB = null;
         this.oscillatorC = null;
+        this.oscillatorD = null;
+        this.oscillatorD = null;
 
         this.oscillatorAGain = null;
         this.oscillatorBGain = null;
         this.oscillatorCGain = null;
+        this.oscillatorDGain = null;
+        this.crystalGain = null;
+        this.oscillatorDGain = null;
+        this.crystalGain = null;
 
         this.filter = null;
         this.gain = null;
@@ -129,10 +135,20 @@ export class Voice {
         this.oscillatorAGain = context.createGain();
         this.oscillatorBGain = context.createGain();
         this.oscillatorCGain = context.createGain();
+        this.oscillatorDGain = context.createGain();
+        this.crystalGain = context.createGain();
 
-        this.oscillatorAGain.gain.setValueAtTime(0.72, now);
-        this.oscillatorBGain.gain.setValueAtTime(0.24, now);
-        this.oscillatorCGain.gain.setValueAtTime(0.08, now);
+        this.oscillatorAGain.gain.setValueAtTime(0.64, now);
+        this.oscillatorBGain.gain.setValueAtTime(0.18, now);
+        this.oscillatorCGain.gain.setValueAtTime(0.055, now);
+        this.oscillatorDGain.gain.setValueAtTime(0.0, now);
+
+        // A short high partial gives every note a small glass/water attack.
+        this.oscillatorD = context.createOscillator();
+        this.oscillatorD.type = "sine";
+        this.oscillatorD.frequency.setValueAtTime(frequency * 4.01, now);
+        this.oscillatorD.detune.setValueAtTime(7, now);
+        this.oscillatorD.connect(this.oscillatorDGain);
 
         this.oscillatorA.connect(this.oscillatorAGain);
         this.oscillatorB.connect(this.oscillatorBGain);
@@ -149,12 +165,12 @@ export class Voice {
         this.filter.type = "lowpass";
 
         const filterBase =
-            850 +
-            ((this.note - 48) / 31) * 1050;
+            1800 +
+            ((this.note - 48) / 31) * 2500;
 
         this.filter.frequency
             .setValueAtTime(
-                Math.max(700, Math.min(1900, filterBase)),
+                Math.max(1400, Math.min(4600, filterBase)),
                 now
             );
 
@@ -246,6 +262,16 @@ export class Voice {
         this.gain =
             context.createGain();
 
+        this.crystalGain.gain.setValueAtTime(0.0001, now);
+        this.crystalGain.gain.exponentialRampToValueAtTime(
+            Math.max(0.012, 0.032 * this.velocity),
+            now + 0.018
+        );
+        this.crystalGain.gain.exponentialRampToValueAtTime(
+            0.0001,
+            now + 0.72
+        );
+
         const peakGain =
             0.095 * this.velocity;
 
@@ -308,6 +334,7 @@ export class Voice {
         this.oscillatorAGain.connect(this.filter);
         this.oscillatorBGain.connect(this.filter);
         this.oscillatorCGain.connect(this.filter);
+        this.oscillatorDGain.connect(this.filter);
 
         this.filter.connect(
             this.gain
@@ -322,6 +349,8 @@ export class Voice {
             this.panner
         );
 
+        this.crystalGain.connect(this.panner);
+
         this.panner.connect(
             this.destination
         );
@@ -334,6 +363,8 @@ export class Voice {
         this.gain.connect(
             this.reverbSend
         );
+
+        this.crystalGain.connect(this.reverbSend);
 
         this.reverbSend.connect(
             this.reverbInput
@@ -350,6 +381,7 @@ export class Voice {
         this.oscillatorA.start(now);
         this.oscillatorB.start(now);
         this.oscillatorC.start(now);
+        this.oscillatorD.start(now);
 
         // A MIDI controller can lose a Note Off (USB disconnect, browser
         // visibility change, device state change). Never leave a voice alive
@@ -532,6 +564,10 @@ export class Voice {
             now + releaseTime + 0.1
         );
 
+        this.oscillatorD.stop(
+            now + Math.max(0.9, releaseTime) + 0.1
+        );
+
         this.lfo.stop(
             now + releaseTime + 0.1
         );
@@ -590,6 +626,14 @@ export class Voice {
 
         try {
             this.oscillatorCGain?.disconnect();
+        } catch {}
+
+        try {
+            this.oscillatorDGain?.disconnect();
+        } catch {}
+
+        try {
+            this.crystalGain?.disconnect();
         } catch {}
 
         try {
