@@ -57,6 +57,8 @@ export class VisualEngine {
         this.nextFlowerId = 1;
         this.lastNoteOn = new Map();
         this.sunReveal = 0;
+        this.sunMessageIndex = 0;
+        this.sunMessageChangedAt = performance.now();
         this.sleepCycle = -1;
         this.sleepMessageIndex = 0;
 
@@ -396,36 +398,50 @@ export class VisualEngine {
         const radius = Math.min(w, h) * 0.225;
         const x = w * 0.5;
         const rise = easeInOutSine(this.sunReveal);
-
-        // Clip at the horizon: the sun can emerge through the line,
-        // but can never be rendered below the ground.
         const y = lerp(horizon + radius, h * 0.42, rise);
 
+        // The sun is an outline only. It emerges cleanly from the horizon:
+        // nothing can be drawn below the ground line.
         c.save();
         c.beginPath();
         c.rect(0, 0, w, horizon);
         c.clip();
         c.globalAlpha = this.sunReveal;
 
-        c.fillStyle = "rgba(248, 249, 244, 0.92)";
+        c.strokeStyle = "rgba(248, 249, 244, 0.94)";
+        c.lineWidth = 1.4;
         c.beginPath();
         c.arc(x, y, radius, 0, TAU);
-        c.fill();
+        c.stroke();
 
-        c.fillStyle = "rgba(5, 5, 5, 0.78)";
+        // Only one phrase is shown at a time inside the sun.
+        // The phrases rotate slowly while the idle sun remains visible.
+        const messages = [
+            "HEY",
+            "RÉVEILLEZ-MOI",
+            "JE SUIS LÀ"
+        ];
+
+        const now = performance.now();
+        const elapsed = now - this.sunMessageChangedAt;
+
+        if (elapsed >= 2800) {
+            this.sunMessageIndex =
+                (this.sunMessageIndex + Math.floor(elapsed / 2800)) %
+                messages.length;
+            this.sunMessageChangedAt = now;
+        }
+
+        const message = messages[this.sunMessageIndex];
+
+        c.fillStyle = "rgba(248, 249, 244, 0.92)";
         c.font =
             "300 " +
             Math.max(11, Math.min(20, radius * 0.105)) +
             "px Inter, system-ui, sans-serif";
         c.textAlign = "center";
         c.textBaseline = "middle";
-
-        const lines = ["HEY,", "REVEILLEZ MOI,", "JE SUIS LA"];
-        const lineHeight = radius * 0.22;
-
-        lines.forEach((line, i) => {
-            c.fillText(line, x, y + (i - 1) * lineHeight);
-        });
+        c.fillText(message, x, y);
 
         c.restore();
     }
@@ -435,7 +451,7 @@ export class VisualEngine {
         const y = h * 0.78;
         c.save();
         c.strokeStyle = "rgba(248, 249, 244, 0.94)";
-        c.lineWidth = 4;
+        c.lineWidth = 2;
         c.lineCap = "butt";
         c.beginPath();
         c.moveTo(0, y);
