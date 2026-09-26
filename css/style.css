@@ -21,8 +21,7 @@ h1{margin:0;font-size:20px;font-weight:500;letter-spacing:-.04em}
 .key.active{transform:translateY(-3px)}
 .key-note{display:block;margin-top:3px;color:inherit;opacity:.55;font-size:18px;line-height:1.1}
 .key.active .key-note{opacity:1}
-.idle-message{position:fixed;left:50%;top:50%;z-index:4;transform:translate(-50%,-50%);font-family:"Roboto",sans-serif;font-size:clamp(1.8rem,4vw,4rem);font-weight:100;letter-spacing:.16em;opacity:0;transition:opacity 2s ease;pointer-events:none}
-.idle-message.visible{opacity:.78}
+.idle-message{display:none !important}
 @media(max-width:700px){
 .header{top:18px;left:14px;right:14px}.header-actions{gap:3px}h1{font-size:16px}.header p{font-size:9px}
 .scale-button,.fullscreen-button{min-height:26px;padding:4px 5px;font-size:7px}
