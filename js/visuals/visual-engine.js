@@ -206,9 +206,8 @@ export class VisualEngine {
             flower.returnStarted = null;
         }
 
-        const w = innerWidth;
         const targetX = flower.x;
-        const startY = this.cloudYForX(targetX);
+        const startY = innerHeight * 0.10;
 
         this.drops.push({
             x: targetX,
@@ -279,7 +278,6 @@ export class VisualEngine {
         this.updateTrees(dt);
         this.updateImpacts(dt);
 
-        this.drawAtmosphere(now, w, h);
         this.drawGround(w, h);
         this.drawDrops();
         this.drawGarden(now);
@@ -295,15 +293,6 @@ export class VisualEngine {
         }
 
         requestAnimationFrame(this.frame);
-    }
-
-    cloudYForX(x) {
-        const w = innerWidth;
-        const h = innerHeight;
-        const normalized = clamp(x / Math.max(1, w), 0, 1);
-
-        // A gentle variation keeps the clouds from forming a rigid row.
-        return h * (0.13 + 0.055 * Math.sin(normalized * Math.PI * 2.2));
     }
 
     updateDrops(dt) {
