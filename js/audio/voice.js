@@ -17,13 +17,10 @@ export class Voice {
         this.oscillatorB = null;
         this.oscillatorC = null;
         this.oscillatorD = null;
-        this.oscillatorD = null;
 
         this.oscillatorAGain = null;
         this.oscillatorBGain = null;
         this.oscillatorCGain = null;
-        this.oscillatorDGain = null;
-        this.crystalGain = null;
         this.oscillatorDGain = null;
         this.crystalGain = null;
 
@@ -271,6 +268,8 @@ export class Voice {
             0.0001,
             now + 0.72
         );
+
+        this.oscillatorDGain.connect(this.crystalGain);
 
         const peakGain =
             0.095 * this.velocity;
@@ -629,6 +628,7 @@ export class Voice {
         } catch {}
 
         try {
+            try {
             this.oscillatorDGain?.disconnect();
         } catch {}
 
