@@ -168,6 +168,14 @@ createKeyboardUI();
 updateScaleButton();
 updateFullscreenButton();
 
+// Publish the initial scale explicitly so every subsystem starts from
+// the same musical state instead of relying on constructor defaults.
+eventBus.emit({
+    type: "scalechange",
+    index: scaleManager.index,
+    scale: scaleManager.currentScale
+});
+
 keyboard.start();
 touch.start();
 midiInput.start();
