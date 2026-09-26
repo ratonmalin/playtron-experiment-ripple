@@ -55,6 +55,7 @@ export class VisualEngine {
         this.noteColors = new Map();
         this.noteColumns = new Map();
         this.nextFlowerId = 1;
+        this.lastNoteOn = new Map();
         this.sunReveal = 0;
         this.sleepCycle = -1;
         this.sleepMessageIndex = 0;
@@ -160,6 +161,17 @@ export class VisualEngine {
         this.lastActivity = performance.now();
 
         const note = Math.round(event.note);
+        const now = performance.now();
+        const previous = this.lastNoteOn.get(note);
+
+        // A single physical key/touch must create a single visual event.
+        // Ignore an accidental duplicate note-on arriving in the same frame.
+        if (previous !== undefined && now - previous < 40) {
+            return;
+        }
+
+        this.lastNoteOn.set(note, now);
+
         const velocity = clamp(Number(event.velocity) || 0.7, 0.1, 1);
         const color = this.colorForNote(note);
         const column = this.columnForNote(note);
