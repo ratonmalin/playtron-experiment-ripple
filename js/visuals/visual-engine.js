@@ -57,9 +57,9 @@ export class VisualEngine {
         this.nextFlowerId = 1;
         this.lastNoteOn = new Map();
         this.sunReveal = 0;
-        this.sunMessageIndex = 0;
-        this.sunMessageChangedAt = performance.now();
         this.sleepCycle = -1;
+        this.sleepMessageIndex = -1;
+        this.stars = [];
         this.sleepMessageIndex = 0;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
@@ -189,6 +189,11 @@ export class VisualEngine {
         }
 
         if (!flower) {
+            const hadOtherNotes = this.garden.some(item => item.note !== note);
+            if (hadOtherNotes) {
+                this.createChordStars();
+            }
+
             const w = innerWidth;
             const h = innerHeight;
 
@@ -255,6 +260,7 @@ export class VisualEngine {
         this.updateImpacts(dt);
 
         const idleFor = now - this.lastActivity;
+        this.updateStars(dt, idleFor);
         const sunTarget = idleFor > 18000 ? 1 : 0;
         this.sunReveal = lerp(this.sunReveal, sunTarget, 1 - Math.exp(-0.35 * dt));
 
@@ -262,12 +268,12 @@ export class VisualEngine {
         this.drawGround(w, h);
         this.drawDrops();
         this.drawGarden(now);
+        this.drawStars(now, idleFor);
 
         const sleeping = idleFor > 30000;
 
         if (!sleeping) {
             this.sleepCycle = -1;
-
             if (this.idle) {
                 this.idle.classList.remove("visible");
             }
@@ -276,20 +282,19 @@ export class VisualEngine {
 
             const messages = [
                 "RÉVEILLEZ-MOI",
-                "JE SUIS LÀ",
-                "HEY"
+                "HEY",
+                "JE SUIS LÀ"
             ];
 
             this.sleepMessageIndex =
                 (this.sleepMessageIndex + 1) % messages.length;
 
             if (this.idle) {
-                this.idle.textContent =
-                    messages[this.sleepMessageIndex];
-                this.idle.classList.add("visible");
+                // Keep the DOM idle message empty: the phrase belongs
+                // exclusively inside the sun.
+                this.idle.textContent = "";
+                this.idle.classList.remove("visible");
             }
-        } else if (this.idle) {
-            this.idle.classList.add("visible");
         }
 
         requestAnimationFrame(this.frame);
@@ -390,6 +395,64 @@ export class VisualEngine {
         }
     }
 
+    updateStars(dt, idleFor) {
+        // Stars are created by chords and slowly disappear as the idle state
+        // takes over. A star is deliberately tiny and white.
+        const interactionFade = clamp(1 - Math.max(0, idleFor - 10000) / 22000, 0, 1);
+
+        for (let i = this.stars.length - 1; i >= 0; i--) {
+            const star = this.stars[i];
+            star.age += dt;
+            star.alpha *= Math.exp(-0.018 * dt);
+
+            if (interactionFade <= 0.001 || star.alpha <= 0.006) {
+                this.stars.splice(i, 1);
+            }
+        }
+    }
+
+    createChordStars() {
+        const count = 5 + Math.floor(Math.random() * 5);
+
+        for (let i = 0; i < count; i++) {
+            this.stars.push({
+                x: innerWidth * (0.08 + Math.random() * 0.84),
+                y: innerHeight * (0.10 + Math.random() * 0.56),
+                age: 0,
+                alpha: 0.34 + Math.random() * 0.22,
+                size: 0.45 + Math.random() * 0.55
+            });
+        }
+
+        if (this.stars.length > 36) {
+            this.stars.splice(0, this.stars.length - 36);
+        }
+    }
+
+    drawStars(now, idleFor) {
+        if (!this.stars.length) return;
+
+        const idleFade = clamp(1 - Math.max(0, idleFor - 10000) / 22000, 0, 1);
+        if (idleFade <= 0) return;
+
+        const c = this.ctx;
+        c.save();
+        c.fillStyle = "rgba(255, 255, 255, 0.92)";
+
+        for (const star of this.stars) {
+            const twinkle =
+                0.78 +
+                Math.sin(now * 0.0012 + star.x * 0.013) * 0.22;
+
+            c.globalAlpha = star.alpha * twinkle * idleFade;
+            c.beginPath();
+            c.arc(star.x, star.y, star.size, 0, TAU);
+            c.fill();
+        }
+
+        c.restore();
+    }
+
     drawSun(w, h) {
         if (this.sunReveal < 0.001) return;
 
@@ -400,44 +463,34 @@ export class VisualEngine {
         const rise = easeInOutSine(this.sunReveal);
         const y = lerp(horizon + radius, h * 0.42, rise);
 
-        // The sun is an outline only. It emerges cleanly from the horizon:
-        // nothing can be drawn below the ground line.
         c.save();
         c.beginPath();
         c.rect(0, 0, w, horizon);
         c.clip();
-        c.globalAlpha = this.sunReveal;
 
+        // No filled disc, no halo, no persistent canvas trail.
+        c.globalAlpha = this.sunReveal;
         c.strokeStyle = "rgba(248, 249, 244, 0.94)";
         c.lineWidth = 1.4;
         c.beginPath();
         c.arc(x, y, radius, 0, TAU);
         c.stroke();
 
-        // Only one phrase is shown at a time inside the sun.
-        // The phrases rotate slowly while the idle sun remains visible.
+        // The phrase is selected once per idle cycle and remains fixed
+        // until the next interaction -> idle transition.
         const messages = [
-            "HEY",
             "RÉVEILLEZ-MOI",
+            "HEY",
             "JE SUIS LÀ"
         ];
+        const message = messages[
+            Math.max(0, this.sleepMessageIndex) % messages.length
+        ];
 
-        const now = performance.now();
-        const elapsed = now - this.sunMessageChangedAt;
-
-        if (elapsed >= 2800) {
-            this.sunMessageIndex =
-                (this.sunMessageIndex + Math.floor(elapsed / 2800)) %
-                messages.length;
-            this.sunMessageChangedAt = now;
-        }
-
-        const message = messages[this.sunMessageIndex];
-
-        c.fillStyle = "rgba(248, 249, 244, 0.92)";
+        c.fillStyle = "rgba(248, 249, 244, 0.94)";
         c.font =
             "300 " +
-            Math.max(11, Math.min(20, radius * 0.105)) +
+            Math.max(11, Math.min(18, radius * 0.095)) +
             "px Inter, system-ui, sans-serif";
         c.textAlign = "center";
         c.textBaseline = "middle";
