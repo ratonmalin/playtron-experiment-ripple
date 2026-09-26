@@ -100,7 +100,11 @@ export class VisualEngine {
         const key = this.scaleId + ":" + Math.round(note);
         if (!this.noteColors.has(key)) {
             const palette = this.palette();
-            this.noteColors.set(key, hexToRgb(palette[Math.abs(key) % palette.length]));
+            const noteIndex = Math.abs(Math.round(note) - 50);
+            this.noteColors.set(
+                key,
+                hexToRgb(palette[noteIndex % palette.length])
+            );
         }
         return this.noteColors.get(key);
     }
@@ -109,9 +113,34 @@ export class VisualEngine {
         const key = Math.round(note);
 
         if (!this.noteColumns.has(key)) {
-            const palette = this.palette();
-            const index = Math.abs(key) % Math.max(1, palette.length);
-            const normalized = palette.length === 1 ? 0.5 : index / (palette.length - 1);
+            // ScaleManager maps Playtron inputs onto two octaves of scale
+            // degrees. Use that musical degree as the physical garden slot,
+            // so two different notes can never accidentally share a column.
+            const intervalsByScale = {
+                major: [0, 2, 4, 5, 7, 9, 11, 12],
+                minor: [0, 2, 3, 5, 7, 8, 10, 12],
+                suspended: [0, 2, 5, 7, 9, 10, 12, 14]
+            };
+
+            const intervals = intervalsByScale[this.scaleId] || intervalsByScale.major;
+            const relative = key - 50;
+            let bestIndex = 0;
+            let bestDistance = Infinity;
+
+            for (let octave = 0; octave < 2; octave++) {
+                for (let degree = 0; degree < intervals.length; degree++) {
+                    const candidate = octave * 12 + intervals[degree];
+                    const distance = Math.abs(relative - candidate);
+
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestIndex = octave * intervals.length + degree;
+                    }
+                }
+            }
+
+            bestIndex = clamp(bestIndex, 0, 15);
+            const normalized = bestIndex / 15;
             this.noteColumns.set(key, normalized);
         }
 
