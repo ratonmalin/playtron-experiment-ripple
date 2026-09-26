@@ -58,6 +58,7 @@ export class VisualEngine {
         this.activeNotes = new Set();
         this.trees = [];
         this.chordLatched = false;
+        this.sunReveal = 0;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -278,11 +279,15 @@ export class VisualEngine {
         this.updateTrees(dt);
         this.updateImpacts(dt);
 
+        const idleFor = now - this.lastActivity;
+        const sunTarget = idleFor > 18000 ? 1 : 0;
+        this.sunReveal = lerp(this.sunReveal, sunTarget, 1 - Math.exp(-0.35 * dt));
+
+        this.drawSun(now, w, h);
         this.drawGround(w, h);
         this.drawDrops();
         this.drawGarden(now);
 
-        const idleFor = now - this.lastActivity;
         const sleeping = idleFor > 10000;
 
         if (this.idle) {
@@ -497,6 +502,59 @@ export class VisualEngine {
         const midi = Math.round(note);
         const octave = Math.floor(midi / 12) - 1;
         return names[((midi % 12) + 12) % 12] + octave;
+    }
+
+    drawSun(now, w, h) {
+        const reveal = clamp(this.sunReveal, 0, 1);
+        if (reveal < 0.005) return;
+
+        const c = this.ctx;
+        const x = w * 0.78;
+        const horizon = h * 0.78;
+        const radius = Math.min(w, h) * 0.045;
+        const y = horizon - radius * 1.65;
+        const alpha = easeInOutSine(reveal);
+
+        c.save();
+        c.globalAlpha = alpha;
+        c.lineCap = "round";
+        c.lineJoin = "round";
+
+        // Restrained celestial body: a warm core surrounded by sparse
+        // orbital/radiating marks, closer to scientific notation than an icon.
+        const glow = c.createRadialGradient(x, y, radius * 0.15, x, y, radius * 2.8);
+        glow.addColorStop(0, "rgba(255, 224, 145, 0.16)");
+        glow.addColorStop(0.45, "rgba(255, 211, 116, 0.045)");
+        glow.addColorStop(1, "rgba(255, 211, 116, 0)");
+        c.fillStyle = glow;
+        c.beginPath();
+        c.arc(x, y, radius * 2.8, 0, TAU);
+        c.fill();
+
+        c.strokeStyle = "rgba(255, 222, 150, 0.72)";
+        c.lineWidth = 1.15;
+        c.beginPath();
+        c.arc(x, y, radius, 0, TAU);
+        c.stroke();
+
+        c.strokeStyle = "rgba(255, 222, 150, 0.24)";
+        c.lineWidth = 0.65;
+        c.beginPath();
+        c.arc(x, y, radius * 1.55, Math.PI * 1.08, Math.PI * 1.92);
+        c.arc(x, y, radius * 1.95, Math.PI * 0.18, Math.PI * 0.82);
+        c.stroke();
+
+        c.strokeStyle = "rgba(255, 222, 150, 0.18)";
+        c.beginPath();
+        c.moveTo(x - radius * 1.55, y);
+        c.lineTo(x - radius * 1.9, y);
+        c.moveTo(x + radius * 1.55, y);
+        c.lineTo(x + radius * 1.9, y);
+        c.moveTo(x, y - radius * 1.55);
+        c.lineTo(x, y - radius * 1.9);
+        c.stroke();
+
+        c.restore();
     }
 
     drawGround(w, h) {
