@@ -58,6 +58,8 @@ export class VisualEngine {
         this.activeNotes = new Set();
         this.chordPulse = null;
         this.chordArmed = true;
+        this.chordTrees = [];
+        this.sunProgress = 0;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -254,6 +256,22 @@ export class VisualEngine {
             life: 2.2,
             points
         };
+
+        const minX = Math.min(...points.map(p => p.x));
+        const maxX = Math.max(...points.map(p => p.x));
+        const center = (minX + maxX) * 0.5;
+
+        for (let i = 0; i < 7; i++) {
+            const spread = Math.max(70, maxX - minX + 120);
+            this.chordTrees.push({
+                x: center + (i - 3) * (spread / 6) + Math.sin(i * 2.4) * 18,
+                groundY: innerHeight * (0.78 + (i % 2) * 0.012),
+                height: 45 + (i % 3) * 18,
+                age: 0,
+                life: 18,
+                side: i % 2 ? 1 : -1
+            });
+        }
     }
 
     frame(now) {
@@ -277,20 +295,29 @@ export class VisualEngine {
             }
         }
 
+        const idleFor = now - this.lastActivity;
+        const sunTarget = idleFor > 10000 ? 1 : 0;
+        this.sunProgress = lerp(
+            this.sunProgress,
+            sunTarget,
+            1 - Math.exp(-0.18 * dt)
+        );
+
+        this.updateTrees(dt);
+
         this.drawAtmosphere(now, w, h);
         this.drawGround(w, h);
         this.drawDrops();
         this.drawGarden(now);
+        this.drawTrees(now);
         this.drawChordEffect();
+        this.drawSunAndIdleText(w, h);
 
         const idleFor = now - this.lastActivity;
         const sleeping = idleFor > 10000;
 
         if (this.idle) {
-            this.idle.classList.toggle(
-                "visible",
-                this.garden.length === 0 && sleeping
-            );
+            this.idle.classList.remove("visible");
         }
 
         requestAnimationFrame(this.frame);
@@ -415,53 +442,64 @@ export class VisualEngine {
         const c = this.ctx;
         c.save();
 
-        // Childlike clouds, but kept in the same restrained line-art language
-        // as the flowers. Each active note gets its own little cloud.
-        for (const flower of this.garden) {
-            const cloudY = this.cloudYForX(flower.x);
-            const width = Math.min(74, Math.max(52, innerWidth * 0.055));
-            const height = 25;
+        // One soft cloud exists for every musical slot. The note label is
+        // always visible, even before the corresponding flower is grown.
+        const slotNotes = [];
+        for (let i = 0; i < 16; i++) {
+            const note = 50 + i;
+            slotNotes.push({
+                note,
+                x: lerp(w * 0.08, w * 0.92, i / 15)
+            });
+        }
 
-            c.strokeStyle = "rgba(210, 225, 220, 0.22)";
-            c.lineWidth = 1.05;
-            c.lineCap = "round";
-            c.lineJoin = "round";
+        c.strokeStyle = "rgba(215, 225, 220, 0.26)";
+        c.fillStyle = "rgba(205, 218, 213, 0.035)";
+        c.lineWidth = 0.9;
+        c.lineCap = "round";
+        c.lineJoin = "round";
 
+        for (const slot of slotNotes) {
+            const cloudY = this.cloudYForX(slot.x);
+            const width = Math.min(88, Math.max(62, w * 0.055));
+            const r = width * 0.13;
+
+            // Soft Toy Story-like cloud silhouette, translated into line art:
+            // rounded bumps, a soft base, no sharp mathematical contour.
             c.beginPath();
-            c.moveTo(flower.x - width * 0.50, cloudY + 4);
+            c.moveTo(slot.x - width * 0.50, cloudY + 4);
             c.bezierCurveTo(
-                flower.x - width * 0.42, cloudY - 3,
-                flower.x - width * 0.28, cloudY - 4,
-                flower.x - width * 0.18, cloudY - 1
+                slot.x - width * 0.48, cloudY - 5,
+                slot.x - width * 0.38, cloudY - 8,
+                slot.x - width * 0.27, cloudY - 6
             );
             c.bezierCurveTo(
-                flower.x - width * 0.14, cloudY - 13,
-                flower.x + width * 0.03, cloudY - 16,
-                flower.x + width * 0.12, cloudY - 6
+                slot.x - width * 0.23, cloudY - 17,
+                slot.x - width * 0.08, cloudY - 19,
+                slot.x + width * 0.01, cloudY - 9
             );
             c.bezierCurveTo(
-                flower.x + width * 0.22, cloudY - 13,
-                flower.x + width * 0.39, cloudY - 8,
-                flower.x + width * 0.39, cloudY
+                slot.x + width * 0.09, cloudY - 21,
+                slot.x + width * 0.27, cloudY - 19,
+                slot.x + width * 0.30, cloudY - 7
             );
             c.bezierCurveTo(
-                flower.x + width * 0.51, cloudY - 1,
-                flower.x + width * 0.53, cloudY + 3,
-                flower.x + width * 0.50, cloudY + 4
+                slot.x + width * 0.43, cloudY - 9,
+                slot.x + width * 0.51, cloudY - 2,
+                slot.x + width * 0.50, cloudY + 4
             );
             c.bezierCurveTo(
-                flower.x + width * 0.30, cloudY + 9,
-                flower.x - width * 0.28, cloudY + 9,
-                flower.x - width * 0.50, cloudY + 4
+                slot.x + width * 0.34, cloudY + 9,
+                slot.x - width * 0.30, cloudY + 9,
+                slot.x - width * 0.50, cloudY + 4
             );
             c.stroke();
 
-            const noteName = this.noteName(flower.note);
             c.font = "10px system-ui, sans-serif";
             c.textAlign = "center";
             c.textBaseline = "middle";
-            c.fillStyle = "rgba(225, 235, 230, 0.58)";
-            c.fillText(noteName, flower.x, cloudY + 1);
+            c.fillStyle = "rgba(225, 235, 230, 0.62)";
+            c.fillText(this.noteName(slot.note), slot.x, cloudY + 1);
         }
 
         c.restore();
@@ -552,6 +590,101 @@ export class VisualEngine {
             c.stroke();
             c.restore();
         }
+    }
+
+    updateTrees(dt) {
+        for (let i = this.chordTrees.length - 1; i >= 0; i--) {
+            const tree = this.chordTrees[i];
+            tree.age += dt;
+            if (tree.age >= tree.life) {
+                this.chordTrees.splice(i, 1);
+            }
+        }
+    }
+
+    drawTrees(now) {
+        const c = this.ctx;
+
+        for (const tree of this.chordTrees) {
+            const grow = easeOutCubic(clamp(tree.age / 2.8, 0, 1));
+            const fade = Math.min(1, tree.age / 0.5) * (tree.age > tree.life - 2 ? (tree.life - tree.age) / 2 : 1);
+            const h = tree.height * grow;
+
+            c.save();
+            c.strokeStyle = "rgba(170, 205, 190, " + (0.62 * fade) + ")";
+            c.lineWidth = 0.9;
+            c.lineCap = "round";
+            c.lineJoin = "round";
+
+            c.beginPath();
+            c.moveTo(tree.x, tree.groundY);
+            c.bezierCurveTo(
+                tree.x + tree.side * h * 0.05,
+                tree.groundY - h * 0.35,
+                tree.x - tree.side * h * 0.05,
+                tree.groundY - h * 0.72,
+                tree.x,
+                tree.groundY - h
+            );
+            c.stroke();
+
+            for (let j = 0; j < 4; j++) {
+                const yy = tree.groundY - h * (0.38 + j * 0.15);
+                const branch = h * (0.12 + j * 0.015);
+                c.beginPath();
+                c.moveTo(tree.x, yy);
+                c.bezierCurveTo(
+                    tree.x + tree.side * branch,
+                    yy - branch * 0.55,
+                    tree.x + tree.side * branch * 1.35,
+                    yy - branch * 0.2,
+                    tree.x + tree.side * branch * 1.05,
+                    yy + branch * 0.12
+                );
+                c.stroke();
+            }
+
+            c.restore();
+        }
+    }
+
+    drawSunAndIdleText(w, h) {
+        const p = clamp(this.sunProgress, 0, 1);
+        if (p < 0.005) return;
+
+        const c = this.ctx;
+        const cx = w * 0.78;
+        const cy = h * 0.22;
+        const radius = 24 * p;
+
+        c.save();
+        c.globalAlpha = p * 0.75;
+        c.strokeStyle = "rgba(255, 225, 150, 0.8)";
+        c.lineWidth = 1.0;
+        c.beginPath();
+        c.arc(cx, cy, radius, 0, TAU);
+        c.stroke();
+
+        for (let i = 0; i < 12; i++) {
+            const a = i * TAU / 12;
+            const r1 = radius + 8;
+            const r2 = radius + 13;
+            c.beginPath();
+            c.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+            c.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+            c.stroke();
+        }
+
+        // Reuse the project's existing idle message text when available.
+        const message = this.idle?.dataset?.idleText || this.idle?.textContent?.trim();
+        if (message) {
+            c.font = "12px system-ui, sans-serif";
+            c.textAlign = "center";
+            c.fillStyle = "rgba(225, 235, 230, 0.55)";
+            c.fillText(message, cx, cy + radius + 30);
+        }
+
+        c.restore();
     }
 
     drawChordEffect() {
