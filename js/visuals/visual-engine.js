@@ -55,6 +55,9 @@ export class VisualEngine {
         this.noteColors = new Map();
         this.noteColumns = new Map();
         this.nextFlowerId = 1;
+        this.activeNotes = new Set();
+        this.trees = [];
+        this.chordLatched = false;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -152,6 +155,15 @@ export class VisualEngine {
 
         const note = Math.round(event.note);
         const velocity = clamp(Number(event.velocity) || 0.7, 0.1, 1);
+        this.activeNotes.add(note);
+
+        // A chord is three or more notes held together. Trigger only once
+        // per chord, so a sustained chord grows one small grove rather than
+        // spawning a tree on every incoming note.
+        if (this.activeNotes.size >= 3 && !this.chordLatched) {
+            this.growChordTrees([...this.activeNotes]);
+            this.chordLatched = true;
+        }
         const color = this.colorForNote(note);
         const column = this.columnForNote(note);
 
@@ -218,6 +230,38 @@ export class VisualEngine {
 
     handleNoteOff(event) {
         this.lastActivity = performance.now();
+        this.activeNotes.delete(Math.round(event.note));
+        if (this.activeNotes.size < 3) {
+            this.chordLatched = false;
+        }
+    }
+
+    growChordTrees(notes) {
+        const now = performance.now();
+        const sorted = notes.slice().sort((a, b) => a - b);
+        const center = sorted.reduce((sum, note) => sum + this.columnForNote(note), 0) / sorted.length;
+        const count = Math.min(5, Math.max(3, sorted.length + 1));
+
+        for (let i = 0; i < count; i++) {
+            const offset = (i - (count - 1) / 2) * 0.075;
+            const column = clamp(center + offset, 0.08, 0.92);
+            this.trees.push({
+                id: now + i,
+                x: lerp(innerWidth * 0.12, innerWidth * 0.88, column),
+                groundY: innerHeight * 0.78,
+                height: innerHeight * (0.12 + (i % 3) * 0.018),
+                width: innerHeight * (0.055 + (i % 2) * 0.012),
+                growth: 0,
+                targetGrowth: 1,
+                age: 0,
+                life: 22,
+                phase: i * 1.7
+            });
+        }
+
+        if (this.trees.length > 24) {
+            this.trees.splice(0, this.trees.length - 24);
+        }
     }
 
     frame(now) {
@@ -232,6 +276,7 @@ export class VisualEngine {
 
         this.updateDrops(dt);
         this.updateGarden(dt, now);
+        this.updateTrees(dt);
         this.updateImpacts(dt);
 
         this.drawAtmosphere(now, w, h);
@@ -358,6 +403,22 @@ export class VisualEngine {
         }
     }
 
+    updateTrees(dt) {
+        for (let i = this.trees.length - 1; i >= 0; i--) {
+            const tree = this.trees[i];
+            tree.age += dt;
+            tree.growth = lerp(tree.growth, tree.targetGrowth, 1 - Math.exp(-2.2 * dt));
+
+            if (tree.age > tree.life) {
+                tree.targetGrowth = 0;
+            }
+
+            if (tree.age > tree.life + 1.5 && tree.growth < 0.01) {
+                this.trees.splice(i, 1);
+            }
+        }
+    }
+
     updateImpacts(dt) {
         for (let i = this.impacts.length - 1; i >= 0; i--) {
             this.impacts[i].age += dt;
@@ -421,12 +482,6 @@ export class VisualEngine {
             );
             c.stroke();
 
-            const noteName = this.noteName(this.noteForColumn(i));
-            c.font = "10px system-ui, sans-serif";
-            c.textAlign = "center";
-            c.textBaseline = "middle";
-            c.fillStyle = "rgba(225, 235, 230, 0.62)";
-            c.fillText(noteName, x, cloudY + height * 0.08);
         }
 
         c.restore();
@@ -461,7 +516,8 @@ export class VisualEngine {
 
         c.save();
         c.strokeStyle = "rgba(180, 205, 195, 0.18)";
-        c.lineWidth = 1.05;
+        c.lineWidth = 1.5;
+        c.lineCap = "round";
         c.beginPath();
 
         for (let x = 0; x <= w; x += 12) {
@@ -539,6 +595,91 @@ export class VisualEngine {
         for (const flower of this.garden) {
             this.drawFlower(flower, now);
         }
+        for (const tree of this.trees) {
+            this.drawTree(tree, now);
+        }
+    }
+
+    drawTree(tree, now) {
+        const c = this.ctx;
+        const growth = clamp(tree.growth, 0, 1);
+        if (growth < 0.005) return;
+
+        const fade = tree.targetGrowth === 0
+            ? clamp((tree.life + 1.5 - tree.age) / 1.5, 0, 1)
+            : 1;
+        const h = tree.height * easeOutCubic(growth);
+        const w = tree.width * easeOutCubic(growth);
+        const y = tree.groundY;
+
+        c.save();
+        c.globalAlpha = fade * 0.72;
+        c.strokeStyle = "rgba(190, 215, 205, 0.82)";
+        c.lineWidth = 0.9;
+        c.lineCap = "round";
+        c.lineJoin = "round";
+
+        // A tree drawn as a restrained branching system: trunk first, then
+        // a few asymmetric branches. It feels like the garden becoming a
+        // larger ecosystem rather than adding a decorative icon.
+        c.beginPath();
+        c.moveTo(tree.x, y);
+        c.bezierCurveTo(
+            tree.x - w * 0.08, y - h * 0.35,
+            tree.x + w * 0.08, y - h * 0.68,
+            tree.x, y - h
+        );
+        c.stroke();
+
+        const branches = [
+            [0.34, -0.78, -1],
+            [0.50, -0.60, 1],
+            [0.65, -0.72, -1],
+            [0.78, -0.48, 1]
+        ];
+
+        for (const [level, side, direction] of branches) {
+            const bx = tree.x;
+            const by = y - h * level;
+            const ex = bx + direction * w * (0.72 - level * 0.25);
+            const ey = y - h * (level + 0.16);
+            c.beginPath();
+            c.moveTo(bx, by);
+            c.quadraticCurveTo(
+                bx + direction * w * 0.22,
+                by - h * 0.05,
+                ex,
+                ey
+            );
+            c.stroke();
+        }
+
+        // Sparse crown: open contour rather than a filled blob, matching
+        // the line-art language of the flowers.
+        c.beginPath();
+        c.moveTo(tree.x, y - h);
+        c.bezierCurveTo(
+            tree.x - w * 0.70, y - h * 0.98,
+            tree.x - w * 0.95, y - h * 0.72,
+            tree.x - w * 0.68, y - h * 0.55
+        );
+        c.bezierCurveTo(
+            tree.x - w * 0.42, y - h * 0.38,
+            tree.x - w * 0.20, y - h * 0.48,
+            tree.x, y - h * 0.36
+        );
+        c.bezierCurveTo(
+            tree.x + w * 0.25, y - h * 0.50,
+            tree.x + w * 0.62, y - h * 0.38,
+            tree.x + w * 0.76, y - h * 0.60
+        );
+        c.bezierCurveTo(
+            tree.x + w * 0.98, y - h * 0.82,
+            tree.x + w * 0.62, y - h * 0.98,
+            tree.x, y - h
+        );
+        c.stroke();
+        c.restore();
     }
 
     drawFlower(flower, now) {
