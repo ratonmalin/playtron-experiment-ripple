@@ -87,6 +87,7 @@ export class VisualEngine {
 
     handleScale(event) {
         this.scaleId = event.scale?.id || "major";
+        this.noteColumns.clear();
         this.lastActivity = performance.now();
 
         // Existing plants keep their identity, but newly grown plants use
@@ -168,8 +169,7 @@ export class VisualEngine {
         const color = this.colorForNote(note);
         const column = this.columnForNote(note);
 
-        // A note always has its own place in the garden. Repeated notes feed
-        // the same plant instead of creating an unreadable pile of flowers.
+        // Repeated notes feed the same plant instead of creating a pile of flowers.
         let flower = this.garden.find(item => item.note === note);
 
         if (flower && flower.state === "returning") {
@@ -283,7 +283,7 @@ export class VisualEngine {
         const sunTarget = idleFor > 18000 ? 1 : 0;
         this.sunReveal = lerp(this.sunReveal, sunTarget, 1 - Math.exp(-0.35 * dt));
 
-        this.drawSun(now, w, h);
+        this.drawSun(w, h);
         this.drawGround(w, h);
         this.drawDrops();
         this.drawGarden(now);
@@ -504,7 +504,7 @@ export class VisualEngine {
         return names[((midi % 12) + 12) % 12] + octave;
     }
 
-    drawSun(now, w, h) {
+    drawSun(w, h) {
         const reveal = clamp(this.sunReveal, 0, 1);
         if (reveal < 0.005) return;
 
@@ -660,15 +660,13 @@ export class VisualEngine {
         const y = tree.groundY;
 
         c.save();
-        c.globalAlpha = fade * 0.72;
-        c.strokeStyle = "rgba(190, 215, 205, 0.82)";
-        c.lineWidth = 0.9;
+        c.globalAlpha = fade * 0.84;
+        c.strokeStyle = "rgba(190, 215, 205, 0.88)";
+        c.lineWidth = 1.0;
         c.lineCap = "round";
         c.lineJoin = "round";
 
-        // A tree drawn as a restrained branching system: trunk first, then
-        // a few asymmetric branches. It feels like the garden becoming a
-        // larger ecosystem rather than adding a decorative icon.
+        // Branching line system: organic, sparse, and consistent with the flowers.
         c.beginPath();
         c.moveTo(tree.x, y);
         c.bezierCurveTo(
@@ -701,8 +699,7 @@ export class VisualEngine {
             c.stroke();
         }
 
-        // Sparse crown: open contour rather than a filled blob, matching
-        // the line-art language of the flowers.
+        // Open crown contour keeps the same line-art language as the flowers.
         c.beginPath();
         c.moveTo(tree.x, y - h);
         c.bezierCurveTo(
@@ -837,9 +834,6 @@ export class VisualEngine {
 
         for (let i = 0; i < petals; i++) {
             const angle = (i / petals) * TAU;
-            const px = Math.cos(angle) * radius * 0.78;
-            const py = Math.sin(angle) * radius * 0.78;
-
             c.save();
             c.rotate(angle);
 
