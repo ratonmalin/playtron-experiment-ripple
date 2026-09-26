@@ -35,7 +35,7 @@ export class MidiInput {
 
             window.addEventListener(
                 "blur",
-                this.releaseAll.bind(this)
+                this.handleWindowBlur
             );
 
             console.log("[MIDI] Ready. Inputs:", this.access.inputs.size);
