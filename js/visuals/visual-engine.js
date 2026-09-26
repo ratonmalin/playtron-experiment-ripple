@@ -56,7 +56,10 @@ export class VisualEngine {
         this.noteColumns = new Map();
         this.nextFlowerId = 1;
         this.activeNotes = new Set();
-        this.trees = [];
+        this.trees = [
+            { id: "left", side: -1, xRatio: 0.075, groundYRatio: 0.78, heightRatio: 0.68, widthRatio: 0.16, growth: 0, targetGrowth: 0 },
+            { id: "right", side: 1, xRatio: 0.925, groundYRatio: 0.78, heightRatio: 0.68, widthRatio: 0.16, growth: 0, targetGrowth: 0 }
+        ];
         this.chordLatched = false;
         this.sunReveal = 0;
 
@@ -181,6 +184,7 @@ export class VisualEngine {
             flower.state = "growing";
             flower.targetGrowth = flower.growth;
             flower.returnStarted = null;
+            flower.returnStartGrowth = null;
         }
 
         if (!flower) {
@@ -240,29 +244,9 @@ export class VisualEngine {
     }
 
     growChordTrees(notes) {
-        const now = performance.now();
-        const sorted = notes.slice().sort((a, b) => a - b);
-        const center = sorted.reduce((sum, note) => sum + this.columnForNote(note), 0) / sorted.length;
-        const count = Math.min(5, Math.max(3, sorted.length + 1));
-
-        for (let i = 0; i < count; i++) {
-            const offset = (i - (count - 1) / 2) * 0.075;
-            const column = clamp(center + offset, 0.08, 0.92);
-            this.trees.push({
-                id: now + i,
-                x: lerp(innerWidth * 0.12, innerWidth * 0.88, column),
-                groundY: innerHeight * 0.78,
-                height: innerHeight * (0.12 + (i % 3) * 0.018),
-                width: innerHeight * (0.055 + (i % 2) * 0.012),
-                growth: 0,
-                targetGrowth: 1,
-                age: 0,
-                life: 22
-            });
-        }
-
-        if (this.trees.length > 24) {
-            this.trees.splice(0, this.trees.length - 24);
+        const amount = clamp(0.16 + notes.length * 0.035, 0.16, 0.28);
+        for (const tree of this.trees) {
+            tree.targetGrowth = Math.min(1, tree.targetGrowth + amount);
         }
     }
 
@@ -363,52 +347,38 @@ export class VisualEngine {
             const flower = this.garden[i];
             flower.age += dt;
 
-            const responseRate = flower.state === "returning" ? 0.32 : 1.35;
+            if (inactivity > 10000 && flower.state !== "returning") {
+                flower.state = "returning";
+                flower.returnStarted = now;
+                flower.returnStartGrowth = clamp(Math.max(flower.growth, flower.targetGrowth), 0, 1);
+            }
+
+            if (flower.state === "returning") {
+                const sleepProgress = clamp((now - flower.returnStarted) / 15000, 0, 1);
+                flower.growth = flower.returnStartGrowth * (1 - easeInOutSine(sleepProgress));
+                flower.targetGrowth = flower.growth;
+
+                if (sleepProgress >= 1 || flower.growth <= 0.005) {
+                    this.garden.splice(i, 1);
+                }
+                continue;
+            }
 
             flower.growth = lerp(
                 flower.growth,
                 flower.targetGrowth,
-                1 - Math.exp(-responseRate * dt)
+                1 - Math.exp(-1.35 * dt)
             );
-
-            // The garden only begins returning after a genuinely quiet pause.
-            if (
-                inactivity > 10000 &&
-                flower.state !== "returning"
-            ) {
-                flower.state = "returning";
-                flower.returnStarted = now;
-            }
-
-            if (flower.state === "returning") {
-                const sleepProgress = clamp(
-                    (now - flower.returnStarted) / 15000,
-                    0,
-                    1
-                );
-
-                flower.growth = 1 - easeInOutSine(sleepProgress);
-
-                if (sleepProgress >= 1) {
-                    this.garden.splice(i, 1);
-                }
-            }
         }
     }
 
     updateTrees(dt) {
-        for (let i = this.trees.length - 1; i >= 0; i--) {
-            const tree = this.trees[i];
-            tree.age += dt;
-            tree.growth = lerp(tree.growth, tree.targetGrowth, 1 - Math.exp(-2.2 * dt));
-
-            if (tree.age > tree.life) {
-                tree.targetGrowth = 0;
-            }
-
-            if (tree.age > tree.life + 1.5 && tree.growth < 0.01) {
-                this.trees.splice(i, 1);
-            }
+        for (const tree of this.trees) {
+            tree.growth = lerp(
+                tree.growth,
+                tree.targetGrowth,
+                1 - Math.exp(-0.22 * dt)
+            );
         }
     }
 
@@ -426,53 +396,48 @@ export class VisualEngine {
 
         const c = this.ctx;
         const horizon = h * 0.78;
-        const radius = Math.min(w, h) * 0.045;
-        const x = w * 0.78;
-        const y = horizon - Math.min(h * 0.34, 260);
+        const radius = Math.min(w, h) * 0.225;
+        const x = w * 0.5;
+        const rise = easeInOutSine(this.sunReveal);
+        const y = lerp(horizon + radius, h * 0.42, rise);
 
         c.save();
         c.globalAlpha = this.sunReveal;
 
-        // Very restrained glow: the sun should emerge from the empty system,
-        // not turn the garden into a conventional illustration.
-        const glow = c.createRadialGradient(
-            x, y, radius * 0.2,
-            x, y, radius * 4.5
-        );
-        glow.addColorStop(0, "rgba(255, 226, 150, 0.16)");
-        glow.addColorStop(0.45, "rgba(255, 214, 130, 0.055)");
-        glow.addColorStop(1, "rgba(255, 214, 130, 0)");
-
-        c.fillStyle = glow;
+        const halo = c.createRadialGradient(x, y, radius * 0.35, x, y, radius * 2.35);
+        halo.addColorStop(0, "rgba(255, 238, 164, 0.28)");
+        halo.addColorStop(0.25, "rgba(255, 190, 96, 0.20)");
+        halo.addColorStop(0.58, "rgba(247, 126, 83, 0.08)");
+        halo.addColorStop(1, "rgba(247, 126, 83, 0)");
+        c.fillStyle = halo;
         c.beginPath();
-        c.arc(x, y, radius * 4.5, 0, TAU);
+        c.arc(x, y, radius * 2.35, 0, TAU);
         c.fill();
 
-        c.strokeStyle = "rgba(255, 224, 156, 0.72)";
-        c.lineWidth = 1;
+        const disc = c.createRadialGradient(x - radius * 0.22, y - radius * 0.25, radius * 0.08, x, y, radius);
+        disc.addColorStop(0, "rgba(255, 248, 205, 0.98)");
+        disc.addColorStop(0.42, "rgba(255, 211, 121, 0.96)");
+        disc.addColorStop(0.78, "rgba(247, 145, 82, 0.94)");
+        disc.addColorStop(1, "rgba(214, 91, 72, 0.90)");
+        c.fillStyle = disc;
+        c.beginPath();
+        c.arc(x, y, radius, 0, TAU);
+        c.fill();
+
+        c.strokeStyle = "rgba(255, 248, 213, 0.72)";
+        c.lineWidth = 1.2;
         c.beginPath();
         c.arc(x, y, radius, 0, TAU);
         c.stroke();
 
-        c.strokeStyle = "rgba(255, 224, 156, 0.30)";
-        c.lineWidth = 0.7;
+        c.fillStyle = "rgba(38, 22, 20, 0.72)";
+        c.font = "300 " + Math.max(11, Math.min(20, radius * 0.105)) + "px Inter, system-ui, sans-serif";
+        c.textAlign = "center";
+        c.textBaseline = "middle";
 
-        for (let i = 0; i < 8; i++) {
-            const angle = (i / 8) * TAU;
-            const inner = radius * 1.45;
-            const outer = radius * 1.9;
-
-            c.beginPath();
-            c.moveTo(
-                x + Math.cos(angle) * inner,
-                y + Math.sin(angle) * inner
-            );
-            c.lineTo(
-                x + Math.cos(angle) * outer,
-                y + Math.sin(angle) * outer
-            );
-            c.stroke();
-        }
+        const lines = ["HEY,", "REVEILLEZ MOI,", "JE SUIS LA"];
+        const lineHeight = radius * 0.22;
+        lines.forEach((line, i) => c.fillText(line, x, y + (i - 1) * lineHeight));
 
         c.restore();
     }
@@ -480,23 +445,13 @@ export class VisualEngine {
     drawGround(w, h) {
         const c = this.ctx;
         const y = h * 0.78;
-
         c.save();
-        c.strokeStyle = "rgba(180, 205, 195, 0.18)";
-        c.lineWidth = 1.5;
-        c.lineCap = "round";
+        c.strokeStyle = "rgba(248, 249, 244, 0.94)";
+        c.lineWidth = 7.5;
+        c.lineCap = "butt";
         c.beginPath();
-
-        for (let x = 0; x <= w; x += 12) {
-            const yy =
-                y +
-                Math.sin(x * 0.005) * 3 +
-                Math.sin(x * 0.012) * 1.2;
-
-            if (x === 0) c.moveTo(x, yy);
-            else c.lineTo(x, yy);
-        }
-
+        c.moveTo(0, y);
+        c.lineTo(w, y);
         c.stroke();
         c.restore();
     }
@@ -572,77 +527,70 @@ export class VisualEngine {
         const growth = clamp(tree.growth, 0, 1);
         if (growth < 0.005) return;
 
-        const fade = tree.targetGrowth === 0
-            ? clamp((tree.life + 1.5 - tree.age) / 1.5, 0, 1)
-            : 1;
-        const h = tree.height * easeOutCubic(growth);
-        const w = tree.width * easeOutCubic(growth);
-        const y = tree.groundY;
+        const h = innerHeight * tree.heightRatio * easeInOutSine(growth);
+        const trunkW = innerHeight * tree.widthRatio * (0.72 + 0.28 * easeInOutSine(growth));
+        const y = innerHeight * tree.groundYRatio;
+        const x = innerWidth * tree.xRatio;
+        const side = tree.side;
 
         c.save();
-        c.globalAlpha = fade * 0.84;
-        c.strokeStyle = "rgba(190, 215, 205, 0.88)";
-        c.lineWidth = 1.0;
+        c.globalAlpha = 0.9;
+        c.strokeStyle = "rgba(211, 222, 215, 0.86)";
         c.lineCap = "round";
         c.lineJoin = "round";
 
-        // Branching line system: organic, sparse, and consistent with the flowers.
+        c.lineWidth = 1.35;
         c.beginPath();
-        c.moveTo(tree.x, y);
-        c.bezierCurveTo(
-            tree.x - w * 0.08, y - h * 0.35,
-            tree.x + w * 0.08, y - h * 0.68,
-            tree.x, y - h
-        );
+        c.moveTo(x - trunkW * 0.16, y);
+        c.bezierCurveTo(x - trunkW * 0.30, y - h * 0.25, x - trunkW * 0.18, y - h * 0.58, x - trunkW * 0.06, y - h);
+        c.stroke();
+        c.beginPath();
+        c.moveTo(x + trunkW * 0.16, y);
+        c.bezierCurveTo(x + trunkW * 0.30, y - h * 0.25, x + trunkW * 0.18, y - h * 0.58, x + trunkW * 0.06, y - h);
         c.stroke();
 
-        const branches = [
-            [0.34, -1],
-            [0.50, 1],
-            [0.65, -1],
-            [0.78, 1]
-        ];
-
-        for (const [level, direction] of branches) {
-            const bx = tree.x;
-            const by = y - h * level;
-            const ex = bx + direction * w * (0.72 - level * 0.25);
-            const ey = y - h * (level + 0.16);
+        c.lineWidth = 0.65;
+        c.strokeStyle = "rgba(194, 209, 201, 0.58)";
+        for (let i = 1; i < 10; i++) {
+            const t = i / 10;
+            const yy = y - h * t;
+            const half = trunkW * (0.13 + 0.05 * Math.sin(i * 1.7));
+            const bend = Math.sin(i * 2.15) * trunkW * 0.07;
             c.beginPath();
-            c.moveTo(bx, by);
-            c.quadraticCurveTo(
-                bx + direction * w * 0.22,
-                by - h * 0.05,
-                ex,
-                ey
-            );
+            c.moveTo(x - half + bend, yy + h * 0.035);
+            c.bezierCurveTo(x - half * 0.65, yy - h * 0.08, x + half * 0.65, yy - h * 0.12, x + half - bend, yy - h * 0.025);
             c.stroke();
         }
 
-        // Open crown contour keeps the same line-art language as the flowers.
+        c.lineWidth = 1.0;
+        c.strokeStyle = "rgba(207, 220, 212, 0.72)";
+        const levels = [0.42, 0.57, 0.69, 0.80, 0.89];
+        for (let i = 0; i < levels.length; i++) {
+            const level = levels[i];
+            const yy = y - h * level;
+            const direction = i % 2 === 0 ? side : -side;
+            const length = trunkW * (0.95 - i * 0.08);
+
+            c.beginPath();
+            c.moveTo(x, yy);
+            c.quadraticCurveTo(x + direction * length * 0.32, yy - h * 0.035, x + direction * length, yy - h * (0.13 - i * 0.012));
+            c.stroke();
+
+            c.lineWidth = 0.55;
+            c.beginPath();
+            c.moveTo(x + direction * length * 0.58, yy - h * 0.075);
+            c.quadraticCurveTo(x + direction * length * 0.78, yy - h * 0.14, x + direction * length * 0.98, yy - h * 0.16);
+            c.stroke();
+            c.lineWidth = 1.0;
+        }
+
+        c.lineWidth = 0.85;
+        c.strokeStyle = "rgba(197, 213, 204, 0.58)";
         c.beginPath();
-        c.moveTo(tree.x, y - h);
-        c.bezierCurveTo(
-            tree.x - w * 0.70, y - h * 0.98,
-            tree.x - w * 0.95, y - h * 0.72,
-            tree.x - w * 0.68, y - h * 0.55
-        );
-        c.bezierCurveTo(
-            tree.x - w * 0.42, y - h * 0.38,
-            tree.x - w * 0.20, y - h * 0.48,
-            tree.x, y - h * 0.36
-        );
-        c.bezierCurveTo(
-            tree.x + w * 0.25, y - h * 0.50,
-            tree.x + w * 0.62, y - h * 0.38,
-            tree.x + w * 0.76, y - h * 0.60
-        );
-        c.bezierCurveTo(
-            tree.x + w * 0.98, y - h * 0.82,
-            tree.x + w * 0.62, y - h * 0.98,
-            tree.x, y - h
-        );
+        c.moveTo(x, y - h);
+        c.bezierCurveTo(x + side * trunkW * 0.45, y - h * 0.98, x + side * trunkW * 1.25, y - h * 0.91, x + side * trunkW * 1.45, y - h * 0.78);
         c.stroke();
+
         c.restore();
     }
 
