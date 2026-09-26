@@ -191,14 +191,11 @@ export class VisualEngine {
                 lean: (((note * 29) % 100) / 100 - 0.5) * 0.18,
                 phase: ((note * 1.618) % TAU),
                 species: Math.abs(note) % 3,
-                color,
                 restingColor: color,
                 growth: 0,
                 targetGrowth: 0,
                 age: 0,
-                lastFed: performance.now(),
-                state: "growing",
-                feedCount: 0
+                state: "growing"
             };
 
             this.garden.push(flower);
@@ -254,8 +251,7 @@ export class VisualEngine {
                 growth: 0,
                 targetGrowth: 1,
                 age: 0,
-                life: 22,
-                phase: i * 1.7
+                life: 22
             });
         }
 
@@ -326,9 +322,6 @@ export class VisualEngine {
                 );
 
                 if (flower) {
-                    flower.lastFed = performance.now();
-                    flower.feedCount++;
-
                     if (!flower.overwatered && flower.targetGrowth < 0.995) {
                         flower.targetGrowth = Math.min(
                             1,
@@ -508,11 +501,11 @@ export class VisualEngine {
             this.drawFlower(flower, now);
         }
         for (const tree of this.trees) {
-            this.drawTree(tree, now);
+            this.drawTree(tree);
         }
     }
 
-    drawTree(tree, now) {
+    drawTree(tree) {
         const c = this.ctx;
         const growth = clamp(tree.growth, 0, 1);
         if (growth < 0.005) return;
@@ -542,13 +535,13 @@ export class VisualEngine {
         c.stroke();
 
         const branches = [
-            [0.34, -0.78, -1],
-            [0.50, -0.60, 1],
-            [0.65, -0.72, -1],
-            [0.78, -0.48, 1]
+            [0.34, -1],
+            [0.50, 1],
+            [0.65, -1],
+            [0.78, 1]
         ];
 
-        for (const [level, side, direction] of branches) {
+        for (const [level, direction] of branches) {
             const bx = tree.x;
             const by = y - h * level;
             const ex = bx + direction * w * (0.72 - level * 0.25);
