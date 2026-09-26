@@ -371,56 +371,81 @@ export class VisualEngine {
         const c = this.ctx;
         c.save();
 
-        // Childlike clouds, but kept in the same restrained line-art language
-        // as the flowers. Each active note gets its own little cloud.
-        for (const flower of this.garden) {
-            const cloudY = this.cloudYForX(flower.x);
-            const width = Math.min(74, Math.max(52, innerWidth * 0.055));
-            const height = 25;
+        // Sixteen permanent cloud slots mirror the sixteen Playtron inputs.
+        // They stay visible even when the garden is empty, so the musical
+        // structure is readable before anyone touches the installation.
+        const left = w * 0.12;
+        const right = w * 0.88;
+        const spacing = (right - left) / 15;
+        const width = Math.min(74, Math.max(34, spacing * 0.78));
 
-            c.strokeStyle = "rgba(210, 225, 220, 0.22)";
-            c.lineWidth = 1.05;
-            c.lineCap = "round";
-            c.lineJoin = "round";
+        c.strokeStyle = "rgba(210, 225, 220, 0.30)";
+        c.lineWidth = 0.9;
+        c.lineCap = "round";
+        c.lineJoin = "round";
 
+        for (let i = 0; i < 16; i++) {
+            const x = lerp(left, right, i / 15);
+            const cloudY = this.cloudYForX(x);
+            const half = width * 0.5;
+            const height = Math.min(25, width * 0.34);
+
+            // Rounder, softer silhouette: three simple puffs rather than
+            // angular geometry, while keeping the line-art treatment.
             c.beginPath();
-            c.moveTo(flower.x - width * 0.50, cloudY + 4);
+            c.moveTo(x - half, cloudY + height * 0.18);
             c.bezierCurveTo(
-                flower.x - width * 0.42, cloudY - 3,
-                flower.x - width * 0.28, cloudY - 4,
-                flower.x - width * 0.18, cloudY - 1
+                x - half * 0.88, cloudY - height * 0.08,
+                x - half * 0.70, cloudY - height * 0.04,
+                x - half * 0.57, cloudY + height * 0.02
             );
             c.bezierCurveTo(
-                flower.x - width * 0.14, cloudY - 13,
-                flower.x + width * 0.03, cloudY - 16,
-                flower.x + width * 0.12, cloudY - 6
+                x - half * 0.55, cloudY - height * 0.52,
+                x - half * 0.18, cloudY - height * 0.72,
+                x - half * 0.02, cloudY - height * 0.22
             );
             c.bezierCurveTo(
-                flower.x + width * 0.22, cloudY - 13,
-                flower.x + width * 0.39, cloudY - 8,
-                flower.x + width * 0.39, cloudY
+                x + half * 0.10, cloudY - height * 0.70,
+                x + half * 0.48, cloudY - height * 0.58,
+                x + half * 0.49, cloudY - height * 0.02
             );
             c.bezierCurveTo(
-                flower.x + width * 0.51, cloudY - 1,
-                flower.x + width * 0.53, cloudY + 3,
-                flower.x + width * 0.50, cloudY + 4
+                x + half * 0.70, cloudY - height * 0.18,
+                x + half * 0.88, cloudY - height * 0.05,
+                x + half, cloudY + height * 0.18
             );
             c.bezierCurveTo(
-                flower.x + width * 0.30, cloudY + 9,
-                flower.x - width * 0.28, cloudY + 9,
-                flower.x - width * 0.50, cloudY + 4
+                x + half * 0.72, cloudY + height * 0.42,
+                x - half * 0.70, cloudY + height * 0.42,
+                x - half, cloudY + height * 0.18
             );
             c.stroke();
 
-            const noteName = this.noteName(flower.note);
+            const noteName = this.noteName(this.noteForColumn(i));
             c.font = "10px system-ui, sans-serif";
             c.textAlign = "center";
             c.textBaseline = "middle";
-            c.fillStyle = "rgba(225, 235, 230, 0.58)";
-            c.fillText(noteName, flower.x, cloudY + 1);
+            c.fillStyle = "rgba(225, 235, 230, 0.62)";
+            c.fillText(noteName, x, cloudY + height * 0.08);
         }
 
         c.restore();
+    }
+
+    noteForColumn(index) {
+        const intervalsByScale = {
+            major: [0, 2, 4, 5, 7, 9, 11, 12],
+            minor: [0, 2, 3, 5, 7, 8, 10, 12],
+            suspended: [0, 2, 5, 7, 9, 10, 12, 14]
+        };
+
+        const intervals =
+            intervalsByScale[this.scaleId] || intervalsByScale.major;
+
+        const octave = Math.floor(index / intervals.length);
+        const degree = index % intervals.length;
+
+        return 50 + octave * 12 + intervals[degree];
     }
 
     noteName(note) {
