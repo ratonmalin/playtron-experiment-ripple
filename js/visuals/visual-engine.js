@@ -41,7 +41,7 @@ export class VisualEngine {
     constructor(eventBus) {
         this.eventBus = eventBus;
         this.canvas = document.querySelector("#visual-field");
-        this.ctx = this.canvas.getContext("2d");
+        this.ctx = this.canvas?.getContext("2d") || null;
         this.idle = document.querySelector("#idle-message");
 
         this.scaleId = "major";
@@ -71,6 +71,11 @@ export class VisualEngine {
     }
 
     start() {
+        if (!this.canvas || !this.ctx) {
+            console.error("[VISUALS] Canvas unavailable.");
+            return;
+        }
+
         this.resize();
         addEventListener("resize", () => this.resize());
         requestAnimationFrame(this.frame);
@@ -195,7 +200,8 @@ export class VisualEngine {
                 growth: 0,
                 targetGrowth: 0,
                 age: 0,
-                state: "growing"
+                state: "growing",
+                overwatered: false
             };
 
             this.garden.push(flower);
