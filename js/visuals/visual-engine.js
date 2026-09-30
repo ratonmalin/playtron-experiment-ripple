@@ -67,7 +67,6 @@ export class VisualEngine {
         this.lastPlayedFlowerId = null;
         this.lastSequenceAt = 0;
         this.worldBreath = 0;
-        this.sleepSun = 0;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -97,6 +96,13 @@ export class VisualEngine {
         this.canvas.style.width = innerWidth + "px";
         this.canvas.style.height = innerHeight + "px";
         this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+        // Keep the garden anchored to the current viewport. Fullscreen can
+        // change the aspect ratio without recreating the existing flowers.
+        for (const flower of this.garden) {
+            flower.x = lerp(innerWidth * 0.12, innerWidth * 0.88, flower.column);
+            flower.groundY = innerHeight * 0.78;
+        }
     }
 
     handleScale(event) {
@@ -210,7 +216,8 @@ export class VisualEngine {
                 id: this.nextFlowerId++,
                 note,
                 x: lerp(w * 0.12, w * 0.88, column),
-                groundY: h * (0.78 + ((note * 17) % 5) * 0.008),
+                column,
+                groundY: h * 0.78,
                 height: h * (0.12 + ((Math.abs(note) * 13) % 9) * 0.012),
                 lean: (((note * 29) % 100) / 100 - 0.5) * 0.18,
                 phase: ((note * 1.618) % TAU),
@@ -296,9 +303,7 @@ export class VisualEngine {
         const groupTarget = clamp(this.activeNotes.size / 4, 0, 1);
         this.worldBreath = lerp(this.worldBreath, groupTarget, 1 - Math.exp(-1.8 * dt));
         const sleepTarget = idleFor > 12000 ? 1 : 0;
-        this.sleepSun = lerp(this.sleepSun, sleepTarget, 1 - Math.exp(-0.28 * dt));
         this.updateWaves(dt);
-        this.drawSleepSun(w, h);
         this.drawGround(w, h);
         this.drawDrops();
         this.drawWaves();
@@ -567,25 +572,6 @@ export class VisualEngine {
         }
     }
 
-    drawSleepSun(w, h) {
-        if (this.sleepSun < 0.01) return;
-        const c = this.ctx;
-        const horizon = h * 0.78;
-        const radius = Math.min(w, h) * 0.09;
-        const x = w * 0.5;
-        const y = horizon - radius * 0.12;
-        c.save();
-        c.beginPath();
-        c.rect(0, 0, w, horizon);
-        c.clip();
-        c.globalAlpha = this.sleepSun * 0.52;
-        c.strokeStyle = "rgba(248,249,244,0.8)";
-        c.lineWidth = 1;
-        c.beginPath();
-        c.arc(x, y, radius, Math.PI, TAU);
-        c.stroke();
-        c.restore();
-    }
 
     drawWaves() {
         const c = this.ctx;
