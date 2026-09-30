@@ -33,6 +33,8 @@ function easeOutCubic(t) {
     return 1 - Math.pow(1 - clamp(t, 0, 1), 3);
 }
 
+function directionBetween(a, b) { return b >= a ? 1 : -1; }
+
 function easeInOutSine(t) {
     return -(Math.cos(Math.PI * clamp(t, 0, 1)) - 1) / 2;
 }
@@ -293,7 +295,7 @@ export class VisualEngine {
         this.updateChordStars(dt);
         const groupTarget = clamp(this.activeNotes.size / 4, 0, 1);
         this.worldBreath = lerp(this.worldBreath, groupTarget, 1 - Math.exp(-1.8 * dt));
-        const sleepTarget = idleFor > 30000 ? 1 : 0;
+        const sleepTarget = idleFor > 12000 ? 1 : 0;
         this.sleepSun = lerp(this.sleepSun, sleepTarget, 1 - Math.exp(-0.28 * dt));
         this.updateWaves(dt);
         this.drawSleepSun(w, h);
@@ -303,7 +305,7 @@ export class VisualEngine {
         this.drawGarden(now);
         this.drawStars(now, idleFor);
 
-        const sleeping = idleFor > 30000;
+        const sleeping = idleFor > 12000;
 
         if (!sleeping) {
             this.sleepCycle = -1;
@@ -510,16 +512,25 @@ export class VisualEngine {
 
 
     startPropagation(origin, destination) {
-        const candidates = this.garden
-            .filter(flower => flower.id !== origin.id && flower.growth > 0.08)
-            .sort((a, b) => Math.abs(a.x - origin.x) - Math.abs(b.x - origin.x));
-        const route = [origin, ...candidates.slice(0, 8)];
+        const minX = Math.min(origin.x, destination.x);
+        const maxX = Math.max(origin.x, destination.x);
+        const direction = destination.x >= origin.x ? 1 : -1;
+        const intermediates = this.garden
+            .filter(flower =>
+                flower.id !== origin.id &&
+                flower.id !== destination.id &&
+                flower.growth > 0.08 &&
+                flower.x > minX &&
+                flower.x < maxX
+            )
+            .sort((a, b) => direction * (a.x - b.x));
+        const route = [origin, ...intermediates, destination];
         this.waves.push({
             route: route.map(flower => flower.id),
             originX: origin.x,
             destinationX: destination.x,
             age: 0,
-            duration: clamp(Math.abs(destination.x - origin.x) / 170 + 1.2, 1.2, 3.8),
+            duration: clamp(Math.abs(destination.x - origin.x) / 145 + 1.4, 1.4, 4.2),
             visited: new Set(),
             color: destination.restingColor
         });
@@ -535,7 +546,9 @@ export class VisualEngine {
             for (const id of wave.route) {
                 const flower = this.garden.find(item => item.id === id);
                 if (!flower || wave.visited.has(id)) continue;
-                if (Math.abs(flower.x - frontX) < 18 || progress >= 1) {
+                const reached = directionBetween(wave.originX, wave.destinationX) *
+                    (frontX - flower.x) >= -12;
+                if (reached || progress >= 1) {
                     wave.visited.add(id);
                     flower.wavePulse = 1;
                     flower.waveColor = wave.color;
@@ -543,10 +556,11 @@ export class VisualEngine {
                     if (flower.state === "returning") {
                         flower.state = "growing";
                         flower.returnStarted = null;
+                        flower.returnStartGrowth = null;
                     }
                 }
             }
-            if (progress >= 1 && wave.age > wave.duration + 0.6) this.waves.splice(i, 1);
+            if (progress >= 1 && wave.age > wave.duration + 0.8) this.waves.splice(i, 1);
         }
         for (const flower of this.garden) {
             flower.wavePulse = Math.max(0, (flower.wavePulse || 0) - dt * 0.7);
@@ -577,13 +591,22 @@ export class VisualEngine {
         const c = this.ctx;
         for (const wave of this.waves) {
             const progress = clamp(wave.age / wave.duration, 0, 1);
-            const x = lerp(wave.originX, wave.destinationX, easeInOutSine(progress));
-            const alpha = (1 - progress) * 0.22;
+            const eased = easeInOutSine(progress);
+            const x = lerp(wave.originX, wave.destinationX, eased);
+            const remaining = Math.min(progress / 0.12, (1 - progress) / 0.12, 1);
+            const alpha = 0.18 + Math.max(0, remaining) * 0.5;
+            const y = innerHeight * 0.78;
             c.save();
             c.strokeStyle = rgba(wave.color, alpha);
-            c.lineWidth = 0.8;
+            c.lineWidth = 1.25;
             c.beginPath();
-            c.ellipse(x, innerHeight * 0.78, 13 + progress * 18, 3, 0, 0, TAU);
+            c.ellipse(x, y, 10 + Math.sin(progress * Math.PI) * 13, 4, 0, 0, TAU);
+            c.stroke();
+            c.globalAlpha = Math.max(0, remaining) * 0.72;
+            c.lineWidth = 1;
+            c.beginPath();
+            c.moveTo(x - 7, y);
+            c.lineTo(x + 7, y);
             c.stroke();
             c.restore();
         }
