@@ -695,18 +695,22 @@ export class VisualEngine {
         c.lineCap = "round";
         c.lineJoin = "round";
 
-        // Stem: a slightly curved mathematical trajectory.
-        c.beginPath();
-        c.moveTo(flower.x, y);
-        c.bezierCurveTo(
+        // Stems are rendered as a filled ribbon instead of a sub-pixel
+        // stroke. This keeps the line clean at different DPRs/fullscreen
+        // sizes while preserving the delicate line-art appearance.
+        this.drawStem(
+            c,
+            flower.x,
+            y,
             flower.x + lean * 0.15 + sway * 0.25,
             y - h * 0.32,
             topX - lean * 0.15 + sway * 0.7,
             y - h * 0.68,
             topX + sway,
-            y - h
+            y - h,
+            1.35,
+            flower.restingColor
         );
-        c.stroke();
 
         if (growth > 0.24) {
             this.drawLeaf(
@@ -754,6 +758,60 @@ export class VisualEngine {
             );
         }
 
+        c.restore();
+    }
+
+    drawStem(c, x0, y0, x1, y1, x2, y2, x3, y3, width, color) {
+        const left = [];
+        const right = [];
+        const steps = 20;
+
+        const pointAt = t => {
+            const mt = 1 - t;
+            return {
+                x: mt * mt * mt * x0 +
+                    3 * mt * mt * t * x1 +
+                    3 * mt * t * t * x2 +
+                    t * t * t * x3,
+                y: mt * mt * mt * y0 +
+                    3 * mt * mt * t * y1 +
+                    3 * mt * t * t * y2 +
+                    t * t * t * y3
+            };
+        };
+
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const p = pointAt(t);
+            const prev = pointAt(Math.max(0, t - 1 / steps));
+            const next = pointAt(Math.min(1, t + 1 / steps));
+            const dx = next.x - prev.x;
+            const dy = next.y - prev.y;
+            const length = Math.hypot(dx, dy) || 1;
+            const nx = -dy / length;
+            const ny = dx / length;
+            const half = width * (0.82 + 0.18 * (1 - t));
+
+            left.push({ x: p.x + nx * half, y: p.y + ny * half });
+            right.push({ x: p.x - nx * half, y: p.y - ny * half });
+        }
+
+        const c = this.ctx;
+        c.save();
+        c.fillStyle = rgba(hexToRgb(color), 0.78);
+        c.beginPath();
+        c.moveTo(left[0].x, left[0].y);
+
+        for (let i = 1; i < left.length; i++) {
+            c.lineTo(left[i].x, left[i].y);
+        }
+
+        for (let i = right.length - 1; i >= 0; i--) {
+            c.lineTo(right[i].x, right[i].y);
+        }
+
+        c.closePath();
+        c.fill();
         c.restore();
     }
 
