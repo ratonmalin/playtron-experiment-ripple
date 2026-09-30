@@ -65,6 +65,7 @@ if (scaleButton) {
         }
 
         updateScaleButton();
+        createKeyboardUI();
         eventBus.emit({
             type: "scalechange",
             index: scaleManager.index,
