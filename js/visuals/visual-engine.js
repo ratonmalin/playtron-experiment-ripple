@@ -589,25 +589,47 @@ export class VisualEngine {
 
     drawWaves() {
         const c = this.ctx;
+        const h = innerHeight;
         for (const wave of this.waves) {
             const progress = clamp(wave.age / wave.duration, 0, 1);
             const eased = easeInOutSine(progress);
             const x = lerp(wave.originX, wave.destinationX, eased);
-            const remaining = Math.min(progress / 0.12, (1 - progress) / 0.12, 1);
-            const alpha = 0.18 + Math.max(0, remaining) * 0.5;
-            const y = innerHeight * 0.78;
+            const y0 = h * 0.28;
+            const y1 = h * 0.48;
+            const arc = Math.sin(progress * Math.PI) * h * 0.12;
+            const y = lerp(y0, y1, eased) - arc;
+            const fadeIn = clamp(progress / 0.08, 0, 1);
+            const fadeOut = clamp((1 - progress) / 0.16, 0, 1);
+            const alpha = fadeIn * fadeOut;
+
+            // A fine, airborne current: a curved trace and a single drifting
+            // point. It occupies the open space above the flowers, not the soil.
+            const trail = 0.13 * alpha;
             c.save();
-            c.strokeStyle = rgba(wave.color, alpha);
-            c.lineWidth = 1.25;
-            c.beginPath();
-            c.ellipse(x, y, 10 + Math.sin(progress * Math.PI) * 13, 4, 0, 0, TAU);
-            c.stroke();
-            c.globalAlpha = Math.max(0, remaining) * 0.72;
+            c.globalAlpha = trail;
+            c.strokeStyle = rgba(wave.color, 1);
             c.lineWidth = 1;
             c.beginPath();
-            c.moveTo(x - 7, y);
-            c.lineTo(x + 7, y);
+            c.moveTo(wave.originX, y0);
+            c.bezierCurveTo(
+                lerp(wave.originX, wave.destinationX, 0.28),
+                y0 - h * 0.12,
+                lerp(wave.originX, wave.destinationX, 0.72),
+                y1 - h * 0.12,
+                x,
+                y
+            );
             c.stroke();
+
+            c.globalAlpha = alpha * 0.72;
+            c.fillStyle = rgba(wave.color, 1);
+            c.beginPath();
+            c.arc(x, y, 1.8, 0, TAU);
+            c.fill();
+            c.globalAlpha = alpha * 0.18;
+            c.beginPath();
+            c.arc(x, y, 5.5, 0, TAU);
+            c.fill();
             c.restore();
         }
     }
@@ -660,27 +682,7 @@ export class VisualEngine {
             c.restore();
         }
 
-        for (const impact of this.impacts) {
-            const t = clamp(impact.age / impact.life, 0, 1);
-            const radius = 4 + easeOutCubic(t) * 24;
-            const alpha = (1 - t) * 0.55;
 
-            c.save();
-            c.strokeStyle = rgba(impact.color, alpha);
-            c.lineWidth = 0.8;
-            c.beginPath();
-            c.ellipse(
-                impact.x,
-                impact.y,
-                radius,
-                radius * 0.22,
-                0,
-                0,
-                TAU
-            );
-            c.stroke();
-            c.restore();
-        }
     }
 
     drawGarden(now) {
