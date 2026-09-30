@@ -49,7 +49,6 @@ export class VisualEngine {
         this.scaleId = "major";
         this.garden = [];
         this.drops = [];
-        this.impacts = [];
         this.last = performance.now();
         this.lastActivity = performance.now();
         this.dpr = 1;
@@ -71,6 +70,7 @@ export class VisualEngine {
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
         this.handleScale = this.handleScale.bind(this);
+        this.handleResize = this.handleResize.bind(this);
         this.frame = this.frame.bind(this);
 
         eventBus.on("noteon", this.handleNoteOn);
@@ -85,8 +85,12 @@ export class VisualEngine {
         }
 
         this.resize();
-        addEventListener("resize", () => this.resize());
+        addEventListener("resize", this.handleResize);
         requestAnimationFrame(this.frame);
+    }
+
+    handleResize() {
+        this.resize();
     }
 
     resize() {
@@ -295,14 +299,11 @@ export class VisualEngine {
 
         this.updateDrops(dt);
         this.updateGarden(dt, now);
-        this.updateImpacts(dt);
-
         const idleFor = now - this.lastActivity;
         this.updateStars(dt, idleFor);
         this.updateChordStars(dt);
         const groupTarget = clamp(this.activeNotes.size / 4, 0, 1);
         this.worldBreath = lerp(this.worldBreath, groupTarget, 1 - Math.exp(-1.8 * dt));
-        const sleepTarget = idleFor > 12000 ? 1 : 0;
         this.updateWaves(dt);
         this.drawGround(w, h);
         this.drawDrops();
@@ -352,14 +353,6 @@ export class VisualEngine {
             );
 
             if (drop.y >= drop.targetY) {
-                this.impacts.push({
-                    x: drop.x,
-                    y: drop.targetY,
-                    color: drop.color,
-                    age: 0,
-                    life: 1.15
-                });
-
                 const flower = this.garden.find(
                     item => item.id === drop.flowerId
                 );
@@ -425,14 +418,6 @@ export class VisualEngine {
         }
     }
 
-    updateImpacts(dt) {
-        for (let i = this.impacts.length - 1; i >= 0; i--) {
-            this.impacts[i].age += dt;
-            if (this.impacts[i].age > this.impacts[i].life) {
-                this.impacts.splice(i, 1);
-            }
-        }
-    }
 
     updateStars(dt, idleFor) {
         // Stars belong to the chord state only. Once the chord ends they
@@ -690,11 +675,6 @@ export class VisualEngine {
         c.save();
         const breath = Math.sin(now * 0.0011 + flower.phase) * (0.012 + this.worldBreath * 0.045);
         const sway = breath * h;
-        c.strokeStyle = rgba(flower.restingColor, 0.78);
-        c.lineWidth = 0.9;
-        c.lineCap = "round";
-        c.lineJoin = "round";
-
         // Stems are rendered as a filled ribbon instead of a sub-pixel
         // stroke. This keeps the line clean at different DPRs/fullscreen
         // sizes while preserving the delicate line-art appearance.
@@ -796,7 +776,6 @@ export class VisualEngine {
             right.push({ x: p.x - nx * half, y: p.y - ny * half });
         }
 
-        const c = this.ctx;
         c.save();
         c.fillStyle = rgba(color, 0.78);
         c.beginPath();
