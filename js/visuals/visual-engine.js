@@ -56,7 +56,6 @@ export class VisualEngine {
         this.noteColumns = new Map();
         this.nextFlowerId = 1;
         this.lastNoteOn = new Map();
-        this.sunReveal = 0;
         this.sleepCycle = -1;
         this.sleepMessageIndex = -1;
         this.stars = [];
@@ -279,10 +278,6 @@ export class VisualEngine {
         const idleFor = now - this.lastActivity;
         this.updateStars(dt, idleFor);
         this.updateChordStars(dt);
-        const sunTarget = idleFor > 18000 ? 1 : 0;
-        this.sunReveal = lerp(this.sunReveal, sunTarget, 1 - Math.exp(-0.35 * dt));
-
-        this.drawSun(w, h);
         this.drawGround(w, h);
         this.drawDrops();
         this.drawGarden(now);
@@ -293,6 +288,7 @@ export class VisualEngine {
         if (!sleeping) {
             this.sleepCycle = -1;
             if (this.idle) {
+                this.idle.textContent = "";
                 this.idle.classList.remove("visible");
             }
         } else if (this.sleepCycle === -1) {
@@ -308,10 +304,8 @@ export class VisualEngine {
                 (this.sleepMessageIndex + 1) % messages.length;
 
             if (this.idle) {
-                // Keep the DOM idle message empty: the phrase belongs
-                // exclusively inside the sun.
-                this.idle.textContent = "";
-                this.idle.classList.remove("visible");
+                this.idle.textContent = messages[this.sleepMessageIndex];
+                this.idle.classList.add("visible");
             }
         }
 
@@ -494,52 +488,6 @@ export class VisualEngine {
         c.restore();
     }
 
-
-    drawSun(w, h) {
-        if (this.sunReveal < 0.001) return;
-
-        const c = this.ctx;
-        const horizon = h * 0.78;
-        const radius = Math.min(w, h) * 0.225;
-        const x = w * 0.5;
-        const rise = easeInOutSine(this.sunReveal);
-        const y = lerp(horizon + radius, h * 0.42, rise);
-
-        c.save();
-        c.beginPath();
-        c.rect(0, 0, w, horizon);
-        c.clip();
-
-        // No filled disc, no halo, no persistent canvas trail.
-        c.globalAlpha = this.sunReveal;
-        c.strokeStyle = "rgba(248, 249, 244, 0.94)";
-        c.lineWidth = 1.4;
-        c.beginPath();
-        c.arc(x, y, radius, 0, TAU);
-        c.stroke();
-
-        // The phrase is selected once per idle cycle and remains fixed
-        // until the next interaction -> idle transition.
-        const messages = [
-            "RÉVEILLEZ-MOI",
-            "HEY",
-            "JE SUIS LÀ"
-        ];
-        const message = messages[
-            Math.max(0, this.sleepMessageIndex) % messages.length
-        ];
-
-        c.fillStyle = "rgba(248, 249, 244, 0.94)";
-        c.font =
-            "300 " +
-            Math.max(11, Math.min(18, radius * 0.095)) +
-            "px Inter, system-ui, sans-serif";
-        c.textAlign = "center";
-        c.textBaseline = "middle";
-        c.fillText(message, x, y);
-
-        c.restore();
-    }
 
     drawGround(w, h) {
         const c = this.ctx;
