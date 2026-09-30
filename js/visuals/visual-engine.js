@@ -798,7 +798,7 @@ export class VisualEngine {
 
         const c = this.ctx;
         c.save();
-        c.fillStyle = rgba(hexToRgb(color), 0.78);
+        c.fillStyle = rgba(color, 0.78);
         c.beginPath();
         c.moveTo(left[0].x, left[0].y);
 
