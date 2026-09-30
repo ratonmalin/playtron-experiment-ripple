@@ -61,6 +61,11 @@ export class VisualEngine {
         this.stars = [];
         this.activeNotes = new Set();
         this.chordStarTimer = 0;
+        this.waves = [];
+        this.lastPlayedFlowerId = null;
+        this.lastSequenceAt = 0;
+        this.worldBreath = 0;
+        this.sleepSun = 0;
 
         this.handleNoteOn = this.handleNoteOn.bind(this);
         this.handleNoteOff = this.handleNoteOff.bind(this);
@@ -222,6 +227,14 @@ export class VisualEngine {
             flower.returnStarted = null;
         }
 
+        // A short sequence links successive notes into a travelling garden wave.
+        if (this.lastPlayedFlowerId !== null && now - this.lastSequenceAt < 4200 && this.lastPlayedFlowerId !== flower.id) {
+            const origin = this.garden.find(item => item.id === this.lastPlayedFlowerId);
+            if (origin) this.startPropagation(origin, flower);
+        }
+        this.lastPlayedFlowerId = flower.id;
+        this.lastSequenceAt = now;
+
         const targetX = flower.x;
         const startY = innerHeight * 0.10;
 
@@ -278,8 +291,15 @@ export class VisualEngine {
         const idleFor = now - this.lastActivity;
         this.updateStars(dt, idleFor);
         this.updateChordStars(dt);
+        const groupTarget = clamp(this.activeNotes.size / 4, 0, 1);
+        this.worldBreath = lerp(this.worldBreath, groupTarget, 1 - Math.exp(-1.8 * dt));
+        const sleepTarget = idleFor > 30000 ? 1 : 0;
+        this.sleepSun = lerp(this.sleepSun, sleepTarget, 1 - Math.exp(-0.28 * dt));
+        this.updateWaves(dt);
+        this.drawSleepSun(w, h);
         this.drawGround(w, h);
         this.drawDrops();
+        this.drawWaves();
         this.drawGarden(now);
         this.drawStars(now, idleFor);
 
@@ -489,6 +509,86 @@ export class VisualEngine {
     }
 
 
+    startPropagation(origin, destination) {
+        const candidates = this.garden
+            .filter(flower => flower.id !== origin.id && flower.growth > 0.08)
+            .sort((a, b) => Math.abs(a.x - origin.x) - Math.abs(b.x - origin.x));
+        const route = [origin, ...candidates.slice(0, 8)];
+        this.waves.push({
+            route: route.map(flower => flower.id),
+            originX: origin.x,
+            destinationX: destination.x,
+            age: 0,
+            duration: clamp(Math.abs(destination.x - origin.x) / 170 + 1.2, 1.2, 3.8),
+            visited: new Set(),
+            color: destination.restingColor
+        });
+        if (this.waves.length > 6) this.waves.shift();
+    }
+
+    updateWaves(dt) {
+        for (let i = this.waves.length - 1; i >= 0; i--) {
+            const wave = this.waves[i];
+            wave.age += dt;
+            const progress = clamp(wave.age / wave.duration, 0, 1);
+            const frontX = lerp(wave.originX, wave.destinationX, easeInOutSine(progress));
+            for (const id of wave.route) {
+                const flower = this.garden.find(item => item.id === id);
+                if (!flower || wave.visited.has(id)) continue;
+                if (Math.abs(flower.x - frontX) < 18 || progress >= 1) {
+                    wave.visited.add(id);
+                    flower.wavePulse = 1;
+                    flower.waveColor = wave.color;
+                    flower.targetGrowth = Math.min(1, flower.targetGrowth + 0.08);
+                    if (flower.state === "returning") {
+                        flower.state = "growing";
+                        flower.returnStarted = null;
+                    }
+                }
+            }
+            if (progress >= 1 && wave.age > wave.duration + 0.6) this.waves.splice(i, 1);
+        }
+        for (const flower of this.garden) {
+            flower.wavePulse = Math.max(0, (flower.wavePulse || 0) - dt * 0.7);
+        }
+    }
+
+    drawSleepSun(w, h) {
+        if (this.sleepSun < 0.01) return;
+        const c = this.ctx;
+        const horizon = h * 0.78;
+        const radius = Math.min(w, h) * 0.09;
+        const x = w * 0.5;
+        const y = horizon - radius * 0.12;
+        c.save();
+        c.beginPath();
+        c.rect(0, 0, w, horizon);
+        c.clip();
+        c.globalAlpha = this.sleepSun * 0.52;
+        c.strokeStyle = "rgba(248,249,244,0.8)";
+        c.lineWidth = 1;
+        c.beginPath();
+        c.arc(x, y, radius, Math.PI, TAU);
+        c.stroke();
+        c.restore();
+    }
+
+    drawWaves() {
+        const c = this.ctx;
+        for (const wave of this.waves) {
+            const progress = clamp(wave.age / wave.duration, 0, 1);
+            const x = lerp(wave.originX, wave.destinationX, easeInOutSine(progress));
+            const alpha = (1 - progress) * 0.22;
+            c.save();
+            c.strokeStyle = rgba(wave.color, alpha);
+            c.lineWidth = 0.8;
+            c.beginPath();
+            c.ellipse(x, innerHeight * 0.78, 13 + progress * 18, 3, 0, 0, TAU);
+            c.stroke();
+            c.restore();
+        }
+    }
+
     drawGround(w, h) {
         const c = this.ctx;
         const y = h * 0.78;
@@ -577,6 +677,8 @@ export class VisualEngine {
         const topX = flower.x + lean;
 
         c.save();
+        const breath = Math.sin(now * 0.0011 + flower.phase) * (0.012 + this.worldBreath * 0.045);
+        const sway = breath * h;
         c.strokeStyle = rgba(flower.restingColor, 0.78);
         c.lineWidth = 0.9;
         c.lineCap = "round";
@@ -586,11 +688,11 @@ export class VisualEngine {
         c.beginPath();
         c.moveTo(flower.x, y);
         c.bezierCurveTo(
-            flower.x + lean * 0.15,
+            flower.x + lean * 0.15 + sway * 0.25,
             y - h * 0.32,
-            topX - lean * 0.15,
+            topX - lean * 0.15 + sway * 0.7,
             y - h * 0.68,
-            topX,
+            topX + sway,
             y - h
         );
         c.stroke();
@@ -617,11 +719,22 @@ export class VisualEngine {
             );
         }
 
+        if (flower.wavePulse > 0.01) {
+            c.save();
+            c.globalAlpha = flower.wavePulse * 0.38;
+            c.strokeStyle = rgba(flower.waveColor || flower.restingColor, 0.8);
+            c.lineWidth = 0.9;
+            c.beginPath();
+            c.arc(topX + sway, y - h, 5 + (1 - flower.wavePulse) * 9, 0, TAU);
+            c.stroke();
+            c.restore();
+        }
+
         if (growth > 0.67) {
             const bloom = easeInOutSine((growth - 0.67) / 0.33);
             this.drawBloom(
                 c,
-                topX,
+                topX + sway,
                 y - h,
                 Math.min(h * 0.28, 30) * bloom,
                 flower.species,
